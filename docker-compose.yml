@@ -1,0 +1,10 @@
+services:
+  openrepo-sync:
+    image: ghcr.io/opentreecz/openrepo-sync:latest
+    volumes:
+      - ./config.yaml:/config.yaml:ro
+      - ./projects:/projects:ro
+    environment:
+      - OPENREPO_API_KEY=${OPENREPO_API_KEY}
+    command: ["--config", "/config.yaml", "--projects", "/projects"]
+    restart: "no"

@@ -1,0 +1,276 @@
+openrepo-sync
+=============
+
+A command-line tool that keeps a self-hosted OpenRepo package repository in sync
+with upstream software sources.  It checks GitHub Releases, direct download URLs,
+and SourceForge for new package versions, uploads them to OpenRepo, and removes
+releases older than a configured threshold.
+
+
+QUICK START
+-----------
+
+1. Copy and edit the global config:
+
+     cp config.yaml.example config.yaml
+     $EDITOR config.yaml          # set api_url and api_key
+
+2. Create a project file for each package you want to track:
+
+     mkdir -p projects/
+     $EDITOR projects/curl.yaml
+
+3. Run a dry-run to preview what would happen:
+
+     openrepo-sync --dry-run
+
+4. Run for real:
+
+     openrepo-sync
+
+
+INSTALLATION
+------------
+
+Build from source (requires Rust 1.70+):
+
+     cargo build --release
+     install -m755 target/release/openrepo-sync /usr/local/bin/
+
+Install the man page:
+
+     install -Dm644 man/man1/openrepo-sync.1 /usr/local/share/man/man1/openrepo-sync.1
+     mandb
+
+
+CONFIGURATION
+-------------
+
+Configuration is split into two layers:
+
+  config.yaml       Global settings: OpenRepo server URL, API key, download directory.
+  projects/*.yaml   One file per tracked software package.
+
+
+Global config (config.yaml)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+  openrepo:
+    api_url: "https://openrepo.example.com"
+    api_key: "${OPENREPO_API_KEY}"   # ${VAR} is expanded from environment
+  download_dir: "/tmp/openrepo-sync" # optional; defaults to system temp dir
+
+The api_key value supports ${ENV_VAR} expansion.  The recommended practice is to
+store the key in the environment and reference it as ${OPENREPO_API_KEY}.
+
+
+Per-project files (projects/<name>.yaml)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every project file must contain: name, repo_uid, keep_versions, and a source block.
+
+  name        Identifier used in log output and with --project.
+  repo_uid    The repo_uid of the target OpenRepo repository.
+  keep_versions  Maximum number of releases to retain; older ones are deleted.
+  source      Upstream source configuration (see Source Types below).
+
+
+SOURCE TYPES
+------------
+
+github
+~~~~~~
+Fetches release assets from the GitHub Releases API.
+
+  source:
+    type: github
+    owner: curl              # GitHub organisation or user
+    repo: curl               # repository name
+    asset_filter: "*.deb"    # optional glob; keep all assets when omitted
+    prerelease: false        # optional; include pre-releases? default: false
+
+Version is taken from the release tag_name (e.g. "v8.5.0" → 8.5.0).
+Draft releases are always skipped.
+The GITHUB_TOKEN environment variable is not currently used; unauthenticated
+requests are subject to GitHub's 60 req/hour rate limit per IP.
+
+
+direct_url
+~~~~~~~~~~
+A static URL where the filename already contains the version string.
+
+  source:
+    type: direct_url
+    url: "https://example.com/releases/mypkg-2.1.0.deb"
+
+Version is extracted from the filename using a regex that matches patterns such
+as: name-1.2.3.deb, name_1.2.3_amd64.deb, name-v1.2.3.tar.gz.
+
+
+direct_url_latest
+~~~~~~~~~~~~~~~~~
+A URL that always serves the latest release under a fixed or version-less filename
+(e.g. "mypkg-LATEST.deb").  The file is downloaded first; then dpkg-deb (for .deb)
+or rpm -qp (for .rpm) is called to read the actual version from the package metadata.
+The file is renamed to include the version before being uploaded.
+
+  source:
+    type: direct_url_latest
+    url: "https://example.com/releases/mypkg-LATEST.deb"
+
+Requires dpkg-deb (package: dpkg) or rpm (package: rpm) to be installed on the
+host running openrepo-sync, depending on the package format.
+
+
+sourceforge
+~~~~~~~~~~~
+Scrapes the SourceForge file listing page to discover release files.
+
+  source:
+    type: sourceforge
+    project: my-sf-project        # SourceForge project identifier
+    folder: "releases/linux"      # optional subfolder; omit for root listing
+    filename_filter: "*.deb"      # optional glob filter on filenames
+
+Files are sorted by detected version number, newest first.
+
+
+COMMAND-LINE REFERENCE
+----------------------
+
+  openrepo-sync [OPTIONS]
+
+  --config  <FILE>     Global config file. Default: config.yaml
+  --projects <DIR>     Directory of per-project YAML files. Default: projects/
+  --project <NAME>     Sync only the named project (matched by the name field).
+  --dry-run            Preview mode: fetch and compare, but do not upload or delete.
+  -v, --verbose        Enable debug logging (same as RUST_LOG=debug).
+  -h, --help           Show usage summary.
+  -V, --version        Show version number.
+
+
+LOGGING AND DEBUGGING
+---------------------
+
+openrepo-sync uses the `tracing` crate for structured logging.
+
+Default (info level):
+  Shows: authentication result, per-project status (up-to-date / uploaded / pruned),
+  and any errors.
+
+Verbose mode (--verbose or RUST_LOG=debug):
+  Adds: config paths, URL fetches, package counts, download destinations,
+  API request URLs, and the source module for each log line.
+
+RUST_LOG overrides --verbose and supports per-module filtering:
+
+  # All debug output:
+  RUST_LOG=debug openrepo-sync
+
+  # Own code at debug, suppress noisy HTTP internals:
+  RUST_LOG=openrepo=debug,reqwest=warn,hyper=warn openrepo-sync
+
+  # Trace a single module:
+  RUST_LOG=openrepo_sync::sync=trace openrepo-sync
+
+Log output goes to stderr.  Structured fields (module path) are shown only in
+verbose mode to keep normal output readable.
+
+
+SYNC WORKFLOW
+-------------
+
+For each project the following steps are performed in order:
+
+  1. Call GET /api/whoami to verify authentication (once per run, on startup).
+  2. Fetch the latest N releases from the upstream source (N = keep_versions).
+  3. Call the OpenRepo packages endpoint to list what is currently in the repo.
+  4. Diff by filename: identify remote packages not yet present in the repo.
+  5. For each missing package:
+       a. Download to a temporary directory (or, for direct_url_latest, the file
+          was already downloaded during version detection).
+       b. Upload to POST /api/<repo_uid>/upload/ as a multipart form.
+       c. Delete the local temporary file.
+  6. Re-fetch the repo package list (skipped in --dry-run mode).
+  7. Sort packages descending by version; delete any beyond keep_versions.
+
+If a project fails, the error is printed to stderr and the tool proceeds with
+the remaining projects, exiting with status 1 when done.
+
+
+VERSION COMPARISON
+------------------
+
+Versions are parsed as semver (e.g. "8.5.0") where possible.  Tag prefixes such
+as "v" are stripped before parsing.  Strings that do not parse as semver fall back
+to lexicographic comparison.  Semver versions always sort higher than Raw versions.
+
+
+OPENREPO API SUMMARY
+---------------------
+
+All API calls use token-based authentication:
+
+  Authorization: Token <api_key>
+
+Endpoints used by openrepo-sync:
+
+  GET  /api/whoami                              Verify credentials; returns username.
+  GET  /api/repos/<repo_uid>/packages/          List packages (paginated).
+  POST /api/<repo_uid>/upload/                  Upload a package (multipart/form-data).
+                                                  Fields: package_file (binary), overwrite (optional, "1").
+  DELETE /api/<repo_uid>/pkg/<package_uid>/     Delete a specific package.
+
+The server URL and API key are set in config.yaml.  The API key can be retrieved
+from GET /api/whoami → api_key field after logging into the OpenRepo web UI.
+
+
+EXIT CODES
+----------
+
+  0   All projects synced successfully.
+  1   One or more projects encountered an error.
+
+
+EXAMPLES
+--------
+
+Sync all projects with default paths:
+
+  openrepo-sync
+
+Sync only the curl project in verbose mode:
+
+  openrepo-sync --project curl --verbose
+
+Dry run with a non-default config location:
+
+  openrepo-sync \
+    --config /etc/openrepo-sync/config.yaml \
+    --projects /etc/openrepo-sync/projects \
+    --dry-run
+
+Show HTTP-level debug output for a single project:
+
+  RUST_LOG=debug openrepo-sync --project curl 2>&1 | less
+
+Run from cron (suppress info, show only warnings and errors):
+
+  RUST_LOG=warn openrepo-sync --config /etc/openrepo-sync/config.yaml
+
+
+FILES
+-----
+
+  config.yaml       Default global configuration file (current directory).
+  projects/         Default per-project YAML directory (current directory).
+  man/man1/openrepo-sync.1   Installed man page.
+
+
+SEE ALSO
+--------
+
+  openrepo-sync --help
+  man openrepo-sync
+  dpkg-deb(1), rpm(8)
+  https://github.com/openkilt/openrepo

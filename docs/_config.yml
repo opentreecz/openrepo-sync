@@ -1,0 +1,26 @@
+theme: minima
+title: openrepo-sync
+description: Sync packages from upstream sources into a self-hosted OpenRepo repository
+url: ""
+repository: ""
+
+plugins:
+  - jekyll-seo-tag
+
+nav:
+  - title: Home
+    url: /
+  - title: Installation
+    url: /install/
+  - title: Configuration
+    url: /configuration/
+  - title: Usage
+    url: /usage/
+  - title: Source Types
+    url: /sources/
+  - title: API Reference
+    url: /api/
+  - title: Docker
+    url: /docker/
+  - title: Coverage
+    url: /coverage/

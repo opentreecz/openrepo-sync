@@ -1,0 +1,144 @@
+name: Docker
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  docker:
+    name: Build & push Docker image
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Cargo.toml
+        id: version
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
+
+      # ── Download the .deb packages built by the release workflow ────────────
+      - name: Download amd64 packages
+        uses: dawidd6/action-download-artifact@v7
+        with:
+          workflow:    release.yml
+          run_id:      ${{ github.event.workflow_run.id }}
+          name:        packages-amd64
+          path:        docker-context/
+
+      - name: Download arm64 packages
+        uses: dawidd6/action-download-artifact@v7
+        with:
+          workflow:    release.yml
+          run_id:      ${{ github.event.workflow_run.id }}
+          name:        packages-arm64
+          path:        docker-context/
+
+      - name: Download armhf packages
+        uses: dawidd6/action-download-artifact@v7
+        with:
+          workflow:    release.yml
+          run_id:      ${{ github.event.workflow_run.id }}
+          name:        packages-armhf
+          path:        docker-context/
+
+      - name: Copy Dockerfile into build context
+        run: cp Dockerfile docker-context/
+
+      - name: List build context
+        run: ls -lh docker-context/
+
+      # ── Multi-platform builder ───────────────────────────────────────────────
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/openrepo-sync
+          tags: |
+            type=raw,value=${{ steps.version.outputs.tag }}
+            type=raw,value=latest
+
+      # ── Build and push ───────────────────────────────────────────────────────
+      - name: Build and push
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context:   docker-context/
+          file:      docker-context/Dockerfile
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          push:      true
+          tags:      ${{ steps.meta.outputs.tags }}
+          labels:    ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            GITHUB_REPOSITORY=${{ github.repository }}
+          cache-from: type=gha
+          cache-to:   type=gha,mode=max
+
+      # ── Append Docker section to the GitHub release ──────────────────────────
+      - name: Append Docker info to release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG:      ${{ steps.version.outputs.tag }}
+          VERSION:  ${{ steps.version.outputs.version }}
+          DIGEST:   ${{ steps.push.outputs.digest }}
+          REPO:     ${{ github.repository }}
+          OWNER:    ${{ github.repository_owner }}
+        run: |
+          EXISTING=$(gh release view "$TAG" --repo "$REPO" --json body --jq .body)
+
+          DOCKER_SECTION=$(cat <<'SECTION'
+
+          ### Docker image
+
+          ```
+          ghcr.io/${OWNER}/openrepo-sync:${TAG}
+          ghcr.io/${OWNER}/openrepo-sync:latest
+          ```
+
+          **Digest:** `${DIGEST}`
+
+          **Supported platforms:** `linux/amd64` · `linux/arm64` · `linux/arm/v7`
+
+          #### Pull and run
+
+          ```sh
+          docker pull ghcr.io/${OWNER}/openrepo-sync:${TAG}
+
+          docker run --rm \
+            -v ./config.yaml:/config.yaml:ro \
+            -v ./projects:/projects:ro \
+            ghcr.io/${OWNER}/openrepo-sync:${TAG} \
+            --config /config.yaml --projects /projects
+          ```
+          SECTION
+          )
+
+          # Expand env vars inside the heredoc
+          DOCKER_SECTION=$(eval "echo \"$DOCKER_SECTION\"")
+
+          gh release edit "$TAG" \
+            --repo "$REPO" \
+            --notes "${EXISTING}
+          ${DOCKER_SECTION}"

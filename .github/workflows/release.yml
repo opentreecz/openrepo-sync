@@ -1,0 +1,286 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  # ── 1. Determine the next version from Cargo.toml ──────────────────────────
+  version:
+    name: Read version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      tag: ${{ steps.read.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Cargo.toml
+        id: read
+        run: |
+          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
+
+      - name: Abort if tag already exists
+        run: |
+          if git ls-remote --tags origin "${{ steps.read.outputs.tag }}" | grep -q .; then
+            echo "Tag ${{ steps.read.outputs.tag }} already exists — skipping release."
+            exit 1
+          fi
+
+  # ── 2. Build binaries for all target platforms ─────────────────────────────
+  build:
+    name: Build · ${{ matrix.target }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            arch:   amd64
+            strip:  strip
+          - target: aarch64-unknown-linux-gnu
+            arch:   arm64
+            strip:  aarch64-linux-gnu-strip
+          - target: armv7-unknown-linux-gnueabihf
+            arch:   armhf
+            strip:  arm-linux-gnueabihf-strip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain + target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: release-${{ matrix.target }}-
+
+      - name: Install cross-compilation toolchains
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            gcc-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf \
+            binutils-aarch64-linux-gnu \
+            binutils-arm-linux-gnueabihf
+
+      - name: Configure cross linkers
+        run: |
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+
+          [target.armv7-unknown-linux-gnueabihf]
+          linker = "arm-linux-gnueabihf-gcc"
+          EOF
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Strip binary
+        run: ${{ matrix.strip }} target/${{ matrix.target }}/release/openrepo-sync
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/openrepo-sync
+          retention-days: 7
+
+  # ── 3. Package into .deb and .rpm ──────────────────────────────────────────
+  package:
+    name: Package · ${{ matrix.arch }}
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch:    amd64
+            rpm_arch: x86_64
+          - arch:    arm64
+            rpm_arch: aarch64
+          - arch:    armhf
+            rpm_arch: armhfp
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binary
+        uses: actions/download-artifact@v4
+        with:
+          name: binary-${{ matrix.arch }}
+          path: dist/bin/
+
+      - name: Make binary executable
+        run: chmod +x dist/bin/openrepo-sync
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            dpkg-dev \
+            rpm \
+            fakeroot
+
+      - name: Build .deb
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH:    ${{ matrix.arch }}
+        run: |
+          PKG="openrepo-sync_${VERSION}_${ARCH}"
+          mkdir -p "${PKG}/DEBIAN"
+          mkdir -p "${PKG}/usr/bin"
+          mkdir -p "${PKG}/usr/share/man/man1"
+          mkdir -p "${PKG}/usr/share/doc/openrepo-sync"
+
+          install -m755 dist/bin/openrepo-sync "${PKG}/usr/bin/openrepo-sync"
+          install -m644 man/man1/openrepo-sync.1 "${PKG}/usr/share/man/man1/openrepo-sync.1"
+          gzip -9 "${PKG}/usr/share/man/man1/openrepo-sync.1"
+          install -m644 README.md "${PKG}/usr/share/doc/openrepo-sync/README.md"
+
+          cat > "${PKG}/DEBIAN/control" <<EOF
+          Package: openrepo-sync
+          Version: ${VERSION}
+          Architecture: ${ARCH}
+          Maintainer: openrepo-sync contributors
+          Description: Sync packages from upstream sources into an OpenRepo repository
+           openrepo-sync checks GitHub Releases, direct URLs, and SourceForge for
+           new package versions, uploads them to a self-hosted OpenRepo instance,
+           and prunes old releases beyond a configured keep count.
+          Homepage: https://github.com/${{ github.repository }}
+          EOF
+
+          fakeroot dpkg-deb --build "${PKG}"
+          echo "deb_file=${PKG}.deb" >> "$GITHUB_ENV"
+
+      - name: Build .rpm
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ARCH:    ${{ matrix.rpm_arch }}
+        run: |
+          mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+          install -Dm755 dist/bin/openrepo-sync \
+            ~/rpmbuild/BUILD/usr/bin/openrepo-sync
+          install -Dm644 man/man1/openrepo-sync.1 \
+            ~/rpmbuild/BUILD/usr/share/man/man1/openrepo-sync.1
+          gzip -9 ~/rpmbuild/BUILD/usr/share/man/man1/openrepo-sync.1
+          install -Dm644 README.md \
+            ~/rpmbuild/BUILD/usr/share/doc/openrepo-sync/README.md
+
+          cat > ~/rpmbuild/SPECS/openrepo-sync.spec <<EOF
+          Name:           openrepo-sync
+          Version:        ${VERSION}
+          Release:        1
+          Summary:        Sync packages from upstream sources into an OpenRepo repository
+          License:        MIT
+          URL:            https://github.com/${{ github.repository }}
+          BuildArch:      ${ARCH}
+
+          %description
+          openrepo-sync checks GitHub Releases, direct URLs, and SourceForge for
+          new package versions, uploads them to a self-hosted OpenRepo instance,
+          and prunes old releases beyond a configured keep count.
+
+          %install
+          cp -a %{_builddir}/. %{buildroot}/
+
+          %files
+          /usr/bin/openrepo-sync
+          /usr/share/man/man1/openrepo-sync.1.gz
+          /usr/share/doc/openrepo-sync/README.md
+
+          %changelog
+          * $(date '+%a %b %d %Y') GitHub Actions <actions@github.com> - ${VERSION}-1
+          - Automated release ${VERSION}
+          EOF
+
+          rpmbuild --define "_topdir $HOME/rpmbuild" \
+                   --define "_builddir $HOME/rpmbuild/BUILD" \
+                   -bb ~/rpmbuild/SPECS/openrepo-sync.spec
+
+          RPM_FILE=$(find ~/rpmbuild/RPMS -name "*.rpm" | head -1)
+          cp "$RPM_FILE" .
+          echo "rpm_file=$(basename $RPM_FILE)" >> "$GITHUB_ENV"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.arch }}
+          path: |
+            *.deb
+            *.rpm
+          retention-days: 7
+
+  # ── 4. Create GitHub release and attach all packages ──────────────────────
+  release:
+    name: Create release
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist/
+
+      - name: List release assets
+        run: ls -lh dist/
+
+      - name: Create tag
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "${{ needs.version.outputs.tag }}"
+          git push origin "${{ needs.version.outputs.tag }}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ needs.version.outputs.tag }}
+          name:       ${{ needs.version.outputs.tag }}
+          body: |
+            ## openrepo-sync ${{ needs.version.outputs.tag }}
+
+            ### Packages
+
+            | File | Platform |
+            |------|----------|
+            | `openrepo-sync_*_amd64.deb` | Linux x86-64 (Debian/Ubuntu) |
+            | `openrepo-sync_*_arm64.deb` | Linux ARM64 (Debian/Ubuntu) |
+            | `openrepo-sync_*_armhf.deb` | Linux ARMhf (Debian/Ubuntu) |
+            | `openrepo-sync-*.x86_64.rpm` | Linux x86-64 (RHEL/Fedora) |
+            | `openrepo-sync-*.aarch64.rpm` | Linux ARM64 (RHEL/Fedora) |
+            | `openrepo-sync-*.armhfp.rpm` | Linux ARMhf (RHEL/Fedora) |
+
+            ### Install (Debian/Ubuntu)
+            ```sh
+            sudo dpkg -i openrepo-sync_${{ needs.version.outputs.version }}_amd64.deb
+            ```
+
+            ### Install (RHEL/Fedora)
+            ```sh
+            sudo rpm -i openrepo-sync-${{ needs.version.outputs.version }}-1.x86_64.rpm
+            ```
+          files: dist/*
+          fail_on_unmatched_files: true

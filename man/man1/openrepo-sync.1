@@ -1,0 +1,157 @@
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.TH openrepo-sync 1  "openrepo-sync 0.1.0"
+.SH NAME
+openrepo\-sync \- Sync packages from upstream sources into an OpenRepo repository
+.SH SYNOPSIS
+\fBopenrepo\-sync\fR [\fB\-\-config\fR \fI<FILE>\fR] [\fB\-\-projects\fR \fI<DIR>\fR] [\fB\-\-project\fR \fI<NAME>\fR] [\fB\-\-dry\-run\fR] [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+.SH DESCRIPTION
+\fBopenrepo\-sync\fR checks upstream sources (GitHub Releases, direct URLs, SourceForge) for new package versions, downloads them, uploads them to a self\-hosted OpenRepo instance, and prunes old releases beyond a configured keep count.
+.PP
+Configuration is split into a global config file (server URL and API key) and per\-project YAML files (one per software package).
+.PP
+On each run the tool:
+.IP \(bu 2
+Authenticates against the OpenRepo API (\fI/api/whoami\fR)
+.IP \(bu 2
+For each project, fetches the latest release list from the configured upstream source
+.IP \(bu 2
+Compares filenames against packages already in the repository
+.IP \(bu 2
+Downloads and uploads any new packages
+.IP \(bu 2
+Deletes packages beyond the \fIkeep_versions\fR limit, keeping only the newest
+.SH OPTIONS
+.TP
+\fB\-\-config\fR \fI<FILE>\fR
+Path to the global configuration YAML file.
+Default: \fIconfig.yaml\fR (relative to the current directory).
+.TP
+\fB\-\-projects\fR \fI<DIR>\fR
+Directory that contains per\-project YAML files (one \fI*.yaml\fR or \fI*.yml\fR per package).
+Default: \fIprojects/\fR (relative to the current directory).
+.TP
+\fB\-\-project\fR \fI<NAME>\fR
+Sync only the named project. The name is matched against the \fIname\fR field in each project YAML file.
+When omitted, all projects in the \fB\-\-projects\fR directory are synced.
+.TP
+\fB\-\-dry\-run\fR
+Perform all read operations (version fetching, repository listing) but skip uploads and deletes.
+Intended actions are logged at INFO level with a \fI[dry\-run]\fR prefix.
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Enable debug\-level logging.  Equivalent to setting \fBRUST_LOG=debug\fR.
+In verbose mode the log output also includes the source module path for each line.
+The \fBRUST_LOG\fR environment variable takes precedence over this flag when set.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Print a short usage summary and exit.
+.TP
+\fB\-V\fR, \fB\-\-version\fR
+Print the version number and exit.
+.SH CONFIGURATION
+.SS Global config (config.yaml)
+.nf
+openrepo:
+  api_url: "https://openrepo.example.com"
+  api_key: "${OPENREPO_API_KEY}"   # supports ${ENV_VAR} expansion
+download_dir: "/tmp/openrepo-sync" # optional, defaults to system temp dir
+.fi
+.SS Project file (projects/<name>.yaml)
+.PP
+Source type \fBgithub\fR \(em GitHub Releases:
+.nf
+name: curl
+repo_uid: debian-stable
+keep_versions: 3
+source:
+  type: github
+  owner: curl
+  repo: curl
+  asset_filter: "*.deb"   # optional glob; omit to keep all assets
+  prerelease: false        # optional, default false
+.fi
+.PP
+Source type \fBdirect_url\fR \(em static download URL, version parsed from filename:
+.nf
+name: mypkg
+repo_uid: debian-custom
+keep_versions: 1
+source:
+  type: direct_url
+  url: "https://example.com/releases/mypkg-2.1.0.deb"
+.fi
+.PP
+Source type \fBdirect_url_latest\fR \(em URL points to a file with no version in the name; the package is downloaded first and \fBdpkg\-deb\fR or \fBrpm\fR is used to extract the actual version:
+.nf
+name: mypkg-latest
+repo_uid: debian-custom
+keep_versions: 1
+source:
+  type: direct_url_latest
+  url: "https://example.com/releases/mypkg-LATEST.deb"
+.fi
+.PP
+Source type \fBsourceforge\fR \(em SourceForge file listing:
+.nf
+name: sfpkg
+repo_uid: debian-sf
+keep_versions: 2
+source:
+  type: sourceforge
+  project: my-sf-project
+  folder: "releases/linux"   # optional subfolder path
+  filename_filter: "*.deb"   # optional glob filter
+.fi
+.SH ENVIRONMENT
+.TP
+\fBOPENREPO_API_KEY\fR
+When present, the \fI${OPENREPO_API_KEY}\fR placeholder in \fIconfig.yaml\fR is expanded to this value.
+.TP
+\fBRUST_LOG\fR
+Controls log filtering at a fine\-grained level.  Examples:
+.nf
+  RUST_LOG=debug                          # all modules at debug
+  RUST_LOG=openrepo=debug,reqwest=warn    # own code verbose, HTTP client quiet
+  RUST_LOG=openrepo_sync::sync=trace      # trace only the sync module
+.fi
+Takes precedence over \fB\-\-verbose\fR when set.
+.SH EXIT STATUS
+.TP
+\fB0\fR
+All projects synced without errors.
+.TP
+\fB1\fR
+One or more projects encountered an error. Errors are printed to stderr; other projects still proceed.
+.SH EXAMPLES
+.PP
+Sync all projects using defaults:
+.nf
+  openrepo-sync
+.fi
+.PP
+Sync only the \fIcurl\fR project with debug output:
+.nf
+  openrepo-sync --project curl --verbose
+.fi
+.PP
+Dry run against a non\-default config:
+.nf
+  openrepo-sync --config /etc/openrepo/config.yaml --projects /etc/openrepo/projects --dry-run
+.fi
+.PP
+Fine\-grained log filter (show HTTP requests):
+.nf
+  RUST_LOG=debug openrepo-sync --project curl
+.fi
+.SH FILES
+.TP
+\fIconfig.yaml\fR
+Default path for the global configuration file.
+.TP
+\fIprojects/\fR
+Default directory for per\-project YAML files.
+.SH SEE ALSO
+\fBdpkg\-deb\fR(1), \fBrpm\fR(8)
+.SH VERSION
+v0.1.0

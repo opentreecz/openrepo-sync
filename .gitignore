@@ -2,3 +2,10 @@
 /_site
 /docs/.jekyll-cache
 /docs/.jekyll-metadata
+
+# Real, secret-bearing runtime config copied from the *.example templates.
+# Keep the templates themselves tracked.
+/config.yaml
+/projects/*.yaml
+/projects/*.yml
+.env

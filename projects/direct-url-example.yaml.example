@@ -1,0 +1,18 @@
+# Example project file — "direct_url" source type.
+#
+# A fixed URL where the filename already contains the version string
+# (e.g. mypkg-2.1.0.deb). The version is extracted from the filename by
+# regex — no download is needed just to detect the version.
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/direct-url-example.yaml.example projects/mypkg.yaml
+# Full field reference: docs/sources.md
+
+name: mypkg
+repo_uid: debian-custom
+keep_versions: 1
+
+source:
+  type: direct_url
+  url: "https://example.com/releases/mypkg-2.1.0.deb"

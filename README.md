@@ -46,6 +46,7 @@ $EDITOR config.yaml
 
 ```sh
 mkdir -p projects/
+cp projects/github-example.yaml.example projects/curl.yaml   # or another *-example.yaml.example template
 $EDITOR projects/curl.yaml
 ```
 
@@ -60,6 +61,21 @@ openrepo-sync --dry-run
 ```sh
 openrepo-sync
 ```
+
+## Docker
+
+A default `config.yaml.example` and one `projects/*-example.yaml.example` template per source type are included in this repo, ready to be copied and filled in.
+
+```sh
+cp config.yaml.example config.yaml && $EDITOR config.yaml
+cp projects/github-example.yaml.example projects/curl.yaml && $EDITOR projects/curl.yaml
+echo "OPENREPO_API_KEY=your_token_here" > .env
+
+docker compose run --rm openrepo-sync --dry-run   # preview
+docker compose run --rm openrepo-sync             # run for real
+```
+
+See [docs/docker.md](docs/docker.md) for the full step-by-step walkthrough, including cron/systemd scheduling and troubleshooting.
 
 ## Configuration
 
@@ -265,6 +281,10 @@ src/
 man/
 └── man1/
     └── openrepo-sync.1  Man page
+config.yaml.example      Global config template — copy to config.yaml
+projects/
+└── *-example.yaml.example  One template per source type — copy to projects/<name>.yaml
+docker-compose.yml        Default Docker Compose service definition
 USAGE.txt                Plain text reference documentation
 ```
 

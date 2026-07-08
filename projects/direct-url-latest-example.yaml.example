@@ -1,0 +1,23 @@
+# Example project file — "direct_url_latest" source type.
+#
+# For a fixed URL that always serves the newest build, with no version in
+# the filename (e.g. mypkg-LATEST.deb). The file is downloaded first, then
+# `dpkg-deb` (.deb) or `rpm -qp` (.rpm) reads the real version from the
+# package metadata before it is renamed and uploaded.
+#
+# Requires dpkg-deb and/or rpm to be available at runtime — both are
+# already installed in the official ghcr.io/opentreecz/openrepo-sync image,
+# so no extra setup is needed when running in Docker.
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/direct-url-latest-example.yaml.example projects/mypkg-latest.yaml
+# Full field reference: docs/sources.md
+
+name: mypkg-latest
+repo_uid: debian-custom
+keep_versions: 1
+
+source:
+  type: direct_url_latest
+  url: "https://example.com/releases/mypkg-LATEST.deb"

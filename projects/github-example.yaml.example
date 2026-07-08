@@ -1,0 +1,21 @@
+# Example project file — "github" source type.
+#
+# Fetches release assets via the GitHub Releases API. Good fit for any
+# upstream project that publishes .deb/.rpm assets on its GitHub Releases
+# page.
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/github-example.yaml.example projects/curl.yaml
+# Full field reference: docs/sources.md
+
+name: curl                 # identifier used in log output and --project NAME
+repo_uid: debian-stable    # target repository UID in OpenRepo
+keep_versions: 3           # keep the 3 newest versions; older ones are pruned
+
+source:
+  type: github
+  owner: curl               # GitHub organisation or user
+  repo: curl                # repository name
+  asset_filter: "*.deb"    # optional glob; omit to keep every asset per release
+  prerelease: false         # optional, default: false — include pre-releases?

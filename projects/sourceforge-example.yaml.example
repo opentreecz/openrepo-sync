@@ -1,0 +1,19 @@
+# Example project file — "sourceforge" source type.
+#
+# Scrapes a SourceForge project's file listing page to discover releases.
+# Files are sorted by detected version number, newest first.
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/sourceforge-example.yaml.example projects/sfpkg.yaml
+# Full field reference: docs/sources.md
+
+name: sfpkg
+repo_uid: debian-sf
+keep_versions: 2
+
+source:
+  type: sourceforge
+  project: my-sf-project      # SourceForge project identifier (from the URL)
+  folder: "releases/linux"    # optional subfolder; omit for root listing
+  filename_filter: "*.deb"    # optional glob filter

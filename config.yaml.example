@@ -1,0 +1,28 @@
+# openrepo-sync — global configuration template
+#
+# Usage:
+#   cp config.yaml.example config.yaml
+#   $EDITOR config.yaml
+#
+# config.yaml is your real, secret-bearing config file — never commit it.
+# (It is already excluded via .gitignore.)
+
+openrepo:
+  # Base URL of your OpenRepo instance. No trailing slash.
+  api_url: "https://openrepo.example.com"
+
+  # API token, found in the OpenRepo web UI under your user profile
+  # (also returned by GET /api/whoami as the "api_key" field).
+  #
+  # ${VAR} is expanded from the environment when this file is loaded, so
+  # the real secret never has to live in this file or in version control:
+  #   export OPENREPO_API_KEY=xxxxx          # shell
+  #   echo "OPENREPO_API_KEY=xxxxx" > .env    # docker compose
+  api_key: "${OPENREPO_API_KEY}"
+
+# Directory used for temporary package downloads before they are uploaded
+# to OpenRepo. Optional — defaults to the system temp dir
+# (e.g. /tmp/openrepo-sync). Each file is deleted immediately after a
+# successful upload, so this does not need to be a persistent volume,
+# even when running in Docker.
+# download_dir: "/tmp/openrepo-sync"

@@ -1,12 +1,14 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use std::path::Path;
 use tracing::{debug, info, warn};
 
 use crate::config::ProjectConfig;
+use crate::config::SourceConfig;
 use crate::models::{RemotePackage, SyncAction, SyncResult};
 use crate::repo_client::RepoClient;
-use crate::sources::{direct_url::DirectUrlSource, github::GithubSource, sourceforge::SourceforgeSource};
-use crate::config::SourceConfig;
+use crate::sources::{
+    direct_url::DirectUrlSource, github::GithubSource, sourceforge::SourceforgeSource,
+};
 
 pub async fn sync_project(
     project: &ProjectConfig,
@@ -39,11 +41,19 @@ async fn sync_project_inner(
 
     info!("[{}] Fetching upstream packages...", project.name);
     let remote_packages = fetch_upstream(project).await?;
-    debug!("[{}] Found {} upstream packages", project.name, remote_packages.len());
+    debug!(
+        "[{}] Found {} upstream packages",
+        project.name,
+        remote_packages.len()
+    );
 
     info!("[{}] Listing repository packages...", project.name);
     let mut repo_packages = client.list_packages(&project.repo_uid).await?;
-    debug!("[{}] Found {} repo packages", project.name, repo_packages.len());
+    debug!(
+        "[{}] Found {} repo packages",
+        project.name,
+        repo_packages.len()
+    );
 
     // Find remote packages not already in the repo (by filename)
     let repo_filenames: std::collections::HashSet<_> =
@@ -59,7 +69,10 @@ async fn sync_project_inner(
         actions.push(SyncAction::UpToDate);
     } else {
         for remote in &to_upload {
-            info!("[{}] Uploading {} ({})", project.name, remote.filename, remote.version);
+            info!(
+                "[{}] Uploading {} ({})",
+                project.name, remote.filename, remote.version
+            );
             if !dry_run {
                 let path = download_package(remote, download_dir).await?;
                 client
@@ -90,7 +103,10 @@ async fn sync_project_inner(
         let to_delete = &repo_packages[project.keep_versions..];
         let count = to_delete.len();
         for pkg in to_delete {
-            info!("[{}] Pruning {} ({})", project.name, pkg.filename, pkg.version);
+            info!(
+                "[{}] Pruning {} ({})",
+                project.name, pkg.filename, pkg.version
+            );
             if !dry_run {
                 client
                     .delete_package(&project.repo_uid, &pkg.package_uid)
@@ -100,7 +116,9 @@ async fn sync_project_inner(
                 info!("[dry-run] Would delete {}", pkg.filename);
             }
         }
-        actions.push(SyncAction::Pruned { removed_count: count });
+        actions.push(SyncAction::Pruned {
+            removed_count: count,
+        });
     }
 
     Ok(actions)
@@ -108,7 +126,12 @@ async fn sync_project_inner(
 
 async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
     match &project.source {
-        SourceConfig::Github { owner, repo, asset_filter, prerelease } => {
+        SourceConfig::Github {
+            owner,
+            repo,
+            asset_filter,
+            prerelease,
+        } => {
             let source = GithubSource::new(owner, repo, asset_filter.as_deref(), *prerelease)?;
             source.fetch_latest(project.keep_versions).await
         }
@@ -120,23 +143,30 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
             let source = DirectUrlSource::new(url, true)?;
             source.fetch_latest(1).await
         }
-        SourceConfig::Sourceforge { project: sf_project, folder, filename_filter } => {
-            let source = SourceforgeSource::new(
-                sf_project,
-                folder.as_deref(),
-                filename_filter.as_deref(),
-            )?;
+        SourceConfig::Sourceforge {
+            project: sf_project,
+            folder,
+            filename_filter,
+        } => {
+            let source =
+                SourceforgeSource::new(sf_project, folder.as_deref(), filename_filter.as_deref())?;
             source.fetch_latest(project.keep_versions).await
         }
     }
 }
 
-async fn download_package(remote: &RemotePackage, download_dir: &Path) -> Result<std::path::PathBuf> {
+async fn download_package(
+    remote: &RemotePackage,
+    download_dir: &Path,
+) -> Result<std::path::PathBuf> {
     // file:// URLs are already on disk (from DirectUrlLatest pre-download)
     if let Some(path_str) = remote.download_url.strip_prefix("file://") {
         let path = std::path::PathBuf::from(path_str);
         if !path.exists() {
-            bail!("Pre-downloaded package not found on disk: {}", path.display());
+            bail!(
+                "Pre-downloaded package not found on disk: {}",
+                path.display()
+            );
         }
         return Ok(path);
     }

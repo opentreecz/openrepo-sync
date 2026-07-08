@@ -13,11 +13,7 @@ pub struct SourceforgeSource {
 }
 
 impl SourceforgeSource {
-    pub fn new(
-        project: &str,
-        folder: Option<&str>,
-        filename_filter: Option<&str>,
-    ) -> Result<Self> {
+    pub fn new(project: &str, folder: Option<&str>, filename_filter: Option<&str>) -> Result<Self> {
         let pattern = filename_filter
             .map(|f| glob::Pattern::new(f).context("Invalid filename_filter glob pattern"))
             .transpose()?;
@@ -35,10 +31,7 @@ impl SourceforgeSource {
     pub async fn fetch_latest(&self, n: usize) -> Result<Vec<RemotePackage>> {
         let folder_path = self.folder.as_deref().unwrap_or("");
         let url = if folder_path.is_empty() {
-            format!(
-                "https://sourceforge.net/projects/{}/files/",
-                self.project
-            )
+            format!("https://sourceforge.net/projects/{}/files/", self.project)
         } else {
             format!(
                 "https://sourceforge.net/projects/{}/files/{}/",
@@ -83,10 +76,10 @@ impl SourceforgeSource {
                 if filename.is_empty() {
                     continue;
                 }
-                if let Some(pattern) = &self.filename_filter {
-                    if !pattern.matches(&filename) {
-                        continue;
-                    }
+                if let Some(pattern) = &self.filename_filter
+                    && !pattern.matches(&filename)
+                {
+                    continue;
                 }
                 let href = link.value().attr("href").unwrap_or_default();
                 // SourceForge download links: /projects/<proj>/files/<path>/download

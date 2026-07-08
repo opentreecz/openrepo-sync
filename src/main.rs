@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 use std::path::PathBuf;
 use tracing::{debug, info};
-use tracing_subscriber::{fmt, EnvFilter};
+use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser)]
 #[command(
@@ -99,9 +99,11 @@ async fn main() -> Result<()> {
 
     let mut had_error = false;
     for project in &projects {
-        debug!("[{}] Starting sync (repo_uid={})", project.name, project.repo_uid);
-        let result =
-            sync::sync_project(project, &client, &global.download_dir, cli.dry_run).await;
+        debug!(
+            "[{}] Starting sync (repo_uid={})",
+            project.name, project.repo_uid
+        );
+        let result = sync::sync_project(project, &client, &global.download_dir, cli.dry_run).await;
         for action in &result.actions {
             match action {
                 models::SyncAction::UpToDate => {
@@ -142,7 +144,7 @@ fn init_logging(verbose: bool) {
 
     fmt()
         .with_env_filter(filter)
-        .with_target(verbose)       // show module path only in verbose mode
+        .with_target(verbose) // show module path only in verbose mode
         .with_thread_ids(false)
         .with_file(false)
         .compact()

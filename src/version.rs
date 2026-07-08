@@ -1,6 +1,6 @@
-use std::path::Path;
-use anyhow::{bail, Context, Result};
 use crate::models::PackageVersion;
+use anyhow::{Context, Result, bail};
+use std::path::Path;
 
 pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
     // Strip known package/archive extensions before matching so the extension
@@ -16,9 +16,7 @@ pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
 
     // Match semver-like versions including pre-release/build metadata:
     //   name-1.2.3, name_1.2.3_amd64, name-v1.2.3-rc1
-    let re = regex::Regex::new(
-        r"[-_]v?(\d+\.\d+[\d.\-+a-zA-Z]*)"
-    ).unwrap();
+    let re = regex::Regex::new(r"[-_]v?(\d+\.\d+[\d.\-+a-zA-Z]*)").unwrap();
     re.captures(stripped)
         .and_then(|c| c.get(1))
         .map(|m| PackageVersion::parse(m.as_str()))

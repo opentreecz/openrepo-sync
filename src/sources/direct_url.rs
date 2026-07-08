@@ -103,7 +103,7 @@ impl DirectUrlSource {
 
 pub(crate) fn url_filename(url: &str) -> String {
     url.split('/')
-        .last()
+        .next_back()
         .and_then(|s| s.split('?').next())
         .unwrap_or("package")
         .to_string()
@@ -139,7 +139,10 @@ mod tests {
 
     #[test]
     fn url_filename_simple() {
-        assert_eq!(url_filename("https://example.com/pkg-1.2.3.deb"), "pkg-1.2.3.deb");
+        assert_eq!(
+            url_filename("https://example.com/pkg-1.2.3.deb"),
+            "pkg-1.2.3.deb"
+        );
     }
 
     #[test]
@@ -179,10 +182,7 @@ mod tests {
     #[test]
     fn rename_inserts_version_when_no_latest_keyword() {
         let ver = PackageVersion::parse("3.0.0");
-        assert_eq!(
-            rename_with_version("mypkg.deb", &ver),
-            "mypkg_3.0.0.deb"
-        );
+        assert_eq!(rename_with_version("mypkg.deb", &ver), "mypkg_3.0.0.deb");
     }
 
     #[test]

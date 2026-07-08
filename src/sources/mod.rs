@@ -1,5 +1,5 @@
-use anyhow::Result;
 use crate::models::RemotePackage;
+use anyhow::Result;
 
 pub mod direct_url;
 pub mod github;

@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::fmt;
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PackageVersion {
@@ -153,7 +153,10 @@ mod tests {
 
     #[test]
     fn equal_versions_compare_equal() {
-        assert_eq!(PackageVersion::parse("1.2.3"), PackageVersion::parse("v1.2.3"));
+        assert_eq!(
+            PackageVersion::parse("1.2.3"),
+            PackageVersion::parse("v1.2.3")
+        );
     }
 
     #[test]
@@ -168,7 +171,7 @@ mod tests {
 
     #[test]
     fn sort_descending_gives_newest_first() {
-        let mut versions = vec![
+        let mut versions = [
             PackageVersion::parse("1.0.0"),
             PackageVersion::parse("3.0.0"),
             PackageVersion::parse("2.0.0"),

@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use reqwest::{
-    multipart::{Form, Part},
     Client, StatusCode,
+    multipart::{Form, Part},
 };
 use serde::Deserialize;
 use std::path::Path;
@@ -65,7 +65,10 @@ impl RepoClient {
         if !resp.status().is_success() {
             bail!("whoami request failed: {}", resp.status());
         }
-        let user: UserResponse = resp.json().await.context("Failed to parse whoami response")?;
+        let user: UserResponse = resp
+            .json()
+            .await
+            .context("Failed to parse whoami response")?;
         Ok(user.username)
     }
 
@@ -87,15 +90,24 @@ impl RepoClient {
                 .context("Failed to list packages")?;
 
             if resp.status() == StatusCode::NOT_FOUND {
-                debug!("Packages endpoint returned 404 for repo '{}' — repo may be empty or endpoint path differs", repo_uid);
+                debug!(
+                    "Packages endpoint returned 404 for repo '{}' — repo may be empty or endpoint path differs",
+                    repo_uid
+                );
                 break;
             }
 
             if !resp.status().is_success() {
-                bail!("Failed to list packages for {}: {}", repo_uid, resp.status());
+                bail!(
+                    "Failed to list packages for {}: {}",
+                    repo_uid,
+                    resp.status()
+                );
             }
 
-            let body: serde_json::Value = resp.json().await
+            let body: serde_json::Value = resp
+                .json()
+                .await
                 .context("Failed to parse package list response")?;
 
             match body.get("results").and_then(|r| r.as_array()) {
@@ -140,12 +152,7 @@ impl RepoClient {
         Ok(packages)
     }
 
-    pub async fn upload_package(
-        &self,
-        repo_uid: &str,
-        path: &Path,
-        overwrite: bool,
-    ) -> Result<()> {
+    pub async fn upload_package(&self, repo_uid: &str, path: &Path, overwrite: bool) -> Result<()> {
         let url = format!("{}/api/{}/upload/", self.base_url, repo_uid);
         let filename = path
             .file_name()

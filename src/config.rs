@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct GlobalConfig {
@@ -124,7 +124,10 @@ openrepo:
 download_dir: "/var/cache/openrepo"
 "#;
         let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
-        assert_eq!(cfg.download_dir, std::path::PathBuf::from("/var/cache/openrepo"));
+        assert_eq!(
+            cfg.download_dir,
+            std::path::PathBuf::from("/var/cache/openrepo")
+        );
     }
 
     // ── ProjectConfig deserialization ──────────────────────────────────────
@@ -191,7 +194,10 @@ source:
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         assert!(matches!(
             p.source,
-            SourceConfig::Sourceforge { folder: Some(_), .. }
+            SourceConfig::Sourceforge {
+                folder: Some(_),
+                ..
+            }
         ));
     }
 
@@ -207,7 +213,12 @@ source:
   repo: tool
 "#;
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
-        if let SourceConfig::Github { asset_filter, prerelease, .. } = p.source {
+        if let SourceConfig::Github {
+            asset_filter,
+            prerelease,
+            ..
+        } = p.source
+        {
             assert!(asset_filter.is_none());
             assert!(!prerelease);
         } else {

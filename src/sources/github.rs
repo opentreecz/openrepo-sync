@@ -88,10 +88,10 @@ impl GithubSource {
                 }
                 let version = PackageVersion::parse(&release.tag_name);
                 for asset in &release.assets {
-                    if let Some(pattern) = &self.asset_filter {
-                        if !pattern.matches(&asset.name) {
-                            continue;
-                        }
+                    if let Some(pattern) = &self.asset_filter
+                        && !pattern.matches(&asset.name)
+                    {
+                        continue;
                     }
                     packages.push(RemotePackage {
                         filename: asset.name.clone(),

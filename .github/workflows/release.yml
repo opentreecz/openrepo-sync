@@ -74,7 +74,9 @@ jobs:
             gcc-aarch64-linux-gnu \
             gcc-arm-linux-gnueabihf \
             binutils-aarch64-linux-gnu \
-            binutils-arm-linux-gnueabihf
+            binutils-arm-linux-gnueabihf \
+            libc6-dev-arm64-cross \
+            libc6-dev-armhf-cross
 
       - name: Configure cross linkers
         run: |

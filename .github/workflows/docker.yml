@@ -5,12 +5,15 @@ on:
     workflows: [Release]
     types: [completed]
     branches: [main]
+  # Manual re-run: rebuilds from the newest successful Release run's
+  # artifacts (they expire after 7 days) and refreshes the release notes.
+  workflow_dispatch:
 
 jobs:
   docker:
     name: Build & push Docker image
     runs-on: ubuntu-latest
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write
       packages: write
@@ -26,11 +29,30 @@ jobs:
           echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
 
       # ── Download the .deb packages built by the release workflow ────────────
+      # On workflow_run the triggering run's ID is used directly; on manual
+      # dispatch, fall back to the newest successful Release run on main.
+      - name: Resolve source Release run
+        id: source
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_ID="${{ github.event.workflow_run.id }}"
+          if [ -z "$RUN_ID" ]; then
+            RUN_ID=$(gh run list --repo "${{ github.repository }}" \
+              --workflow release.yml --branch main --status success \
+              --limit 1 --json databaseId --jq '.[0].databaseId')
+          fi
+          if [ -z "$RUN_ID" ]; then
+            echo "No successful Release run found to pull artifacts from." >&2
+            exit 1
+          fi
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+
       - name: Download amd64 packages
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
-          run_id:      ${{ github.event.workflow_run.id }}
+          run_id:      ${{ steps.source.outputs.run_id }}
           name:        packages-amd64
           path:        docker-context/
 
@@ -38,7 +60,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
-          run_id:      ${{ github.event.workflow_run.id }}
+          run_id:      ${{ steps.source.outputs.run_id }}
           name:        packages-arm64
           path:        docker-context/
 
@@ -46,7 +68,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
-          run_id:      ${{ github.event.workflow_run.id }}
+          run_id:      ${{ steps.source.outputs.run_id }}
           name:        packages-armhf
           path:        docker-context/
 
@@ -96,20 +118,29 @@ jobs:
           cache-from: type=gha
           cache-to:   type=gha,mode=max
 
-      # ── Append Docker section to the GitHub release ──────────────────────────
-      - name: Append Docker info to release notes
+      # ── Add Docker section to the GitHub release notes ───────────────────────
+      # The section template is written with a quoted heredoc (no shell
+      # expansion — the ``` fences must never reach eval/echo, where backticks
+      # would run as command substitution) and filled in with envsubst,
+      # restricted to the three placeholders it should touch.
+      - name: Update release notes with Docker info
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG:      ${{ steps.version.outputs.tag }}
-          VERSION:  ${{ steps.version.outputs.version }}
           DIGEST:   ${{ steps.push.outputs.digest }}
           REPO:     ${{ github.repository }}
           OWNER:    ${{ github.repository_owner }}
         run: |
-          EXISTING=$(gh release view "$TAG" --repo "$REPO" --json body --jq .body)
+          # Keep everything before any previously written Docker section, so
+          # re-runs replace it instead of appending a duplicate.
+          command -v envsubst >/dev/null \
+            || sudo apt-get install -y --no-install-recommends gettext-base
 
-          DOCKER_SECTION=$(cat <<'SECTION'
+          gh release view "$TAG" --repo "$REPO" --json body --jq .body \
+            | sed '/^### Docker image/,$d' > body.md
+          printf '\n' >> body.md
 
+          cat >> body.md <<'SECTION'
           ### Docker image
 
           ```
@@ -133,12 +164,7 @@ jobs:
             --config /config.yaml --projects /projects
           ```
           SECTION
-          )
 
-          # Expand env vars inside the heredoc
-          DOCKER_SECTION=$(eval "echo \"$DOCKER_SECTION\"")
+          envsubst '${OWNER} ${TAG} ${DIGEST}' < body.md > body-final.md
 
-          gh release edit "$TAG" \
-            --repo "$REPO" \
-            --notes "${EXISTING}
-          ${DOCKER_SECTION}"
+          gh release edit "$TAG" --repo "$REPO" --notes-file body-final.md

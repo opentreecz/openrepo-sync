@@ -116,7 +116,7 @@ jobs:
           - arch:    arm64
             rpm_arch: aarch64
           - arch:    armhf
-            rpm_arch: armhfp
+            rpm_arch: armv7hl
 
     steps:
       - uses: actions/checkout@v4
@@ -174,15 +174,21 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           ARCH:    ${{ matrix.rpm_arch }}
         run: |
+          # Staged outside ~/rpmbuild/BUILD on purpose: rpm 4.20+ builds each
+          # package under BUILD/<name>-<version>-build/ and nests BUILDROOT
+          # inside that same directory, so `cp -a $BUILDDIR/. $BUILDROOT/`
+          # would copy the tree into itself. A separate staging dir avoids
+          # the nesting entirely, independent of that internal layout.
+          STAGE="$HOME/rpm-stage"
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
           install -Dm755 dist/bin/openrepo-sync \
-            ~/rpmbuild/BUILD/usr/bin/openrepo-sync
+            "$STAGE/usr/bin/openrepo-sync"
           install -Dm644 man/man1/openrepo-sync.1 \
-            ~/rpmbuild/BUILD/usr/share/man/man1/openrepo-sync.1
-          gzip -9 ~/rpmbuild/BUILD/usr/share/man/man1/openrepo-sync.1
+            "$STAGE/usr/share/man/man1/openrepo-sync.1"
+          gzip -9 "$STAGE/usr/share/man/man1/openrepo-sync.1"
           install -Dm644 README.md \
-            ~/rpmbuild/BUILD/usr/share/doc/openrepo-sync/README.md
+            "$STAGE/usr/share/doc/openrepo-sync/README.md"
 
           cat > ~/rpmbuild/SPECS/openrepo-sync.spec <<EOF
           Name:           openrepo-sync
@@ -191,7 +197,6 @@ jobs:
           Summary:        Sync packages from upstream sources into an OpenRepo repository
           License:        MIT
           URL:            https://github.com/${{ github.repository }}
-          BuildArch:      ${ARCH}
 
           %description
           openrepo-sync checks GitHub Releases, direct URLs, and SourceForge for
@@ -199,7 +204,8 @@ jobs:
           and prunes old releases beyond a configured keep count.
 
           %install
-          cp -a %{_builddir}/. %{buildroot}/
+          mkdir -p %{buildroot}
+          cp -a ${STAGE}/. %{buildroot}/
 
           %files
           /usr/bin/openrepo-sync
@@ -207,12 +213,16 @@ jobs:
           /usr/share/doc/openrepo-sync/README.md
 
           %changelog
-          * $(date '+%a %b %d %Y') GitHub Actions <actions@github.com> - ${VERSION}-1
+          * $(LC_TIME=C date '+%a %b %d %Y') GitHub Actions <actions@github.com> - ${VERSION}-1
           - Automated release ${VERSION}
           EOF
 
-          rpmbuild --define "_topdir $HOME/rpmbuild" \
-                   --define "_builddir $HOME/rpmbuild/BUILD" \
+          # --target (not BuildArch:) is required for cross-arch packaging:
+          # rpm rejects a BuildArch that isn't in the host's compatible-arch
+          # table (e.g. x86_64 host building for aarch64/armv7hl), even
+          # though nothing here is actually compiled.
+          rpmbuild --target "${ARCH}-linux" \
+                   --define "_topdir $HOME/rpmbuild" \
                    -bb ~/rpmbuild/SPECS/openrepo-sync.spec
 
           RPM_FILE=$(find ~/rpmbuild/RPMS -name "*.rpm" | head -1)
@@ -273,7 +283,7 @@ jobs:
             | `openrepo-sync_*_armhf.deb` | Linux ARMhf (Debian/Ubuntu) |
             | `openrepo-sync-*.x86_64.rpm` | Linux x86-64 (RHEL/Fedora) |
             | `openrepo-sync-*.aarch64.rpm` | Linux ARM64 (RHEL/Fedora) |
-            | `openrepo-sync-*.armhfp.rpm` | Linux ARMhf (RHEL/Fedora) |
+            | `openrepo-sync-*.armv7hl.rpm` | Linux ARMhf (RHEL/Fedora) |
 
             ### Install (Debian/Ubuntu)
             ```sh

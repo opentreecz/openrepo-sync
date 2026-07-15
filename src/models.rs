@@ -62,6 +62,7 @@ pub struct RepoPackage {
 pub enum SyncAction {
     UpToDate,
     Uploaded { version: PackageVersion },
+    Skipped { version: PackageVersion },
     Pruned { removed_count: usize },
     Error(String),
 }

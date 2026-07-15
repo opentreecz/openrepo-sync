@@ -2,6 +2,7 @@ use anyhow::{Context, Result, bail};
 use std::path::Path;
 use tracing::{debug, info, warn};
 
+use crate::config::OnConflict;
 use crate::config::ProjectConfig;
 use crate::config::SourceConfig;
 use crate::models::{RemotePackage, SyncAction, SyncResult};
@@ -75,14 +76,33 @@ async fn sync_project_inner(
             );
             if !dry_run {
                 let path = download_package(remote, download_dir).await?;
-                client
-                    .upload_package(&project.repo_uid, &path, false)
-                    .await
-                    .with_context(|| format!("Failed to upload {}", remote.filename))?;
+                let overwrite = project.on_conflict == OnConflict::Overwrite;
+                let upload_result = client
+                    .upload_package(&project.repo_uid, &path, overwrite)
+                    .await;
                 let _ = tokio::fs::remove_file(&path).await;
-                actions.push(SyncAction::Uploaded {
-                    version: remote.version.clone(),
-                });
+                match upload_result {
+                    Ok(()) => {
+                        actions.push(SyncAction::Uploaded {
+                            version: remote.version.clone(),
+                        });
+                    }
+                    Err(e) if project.on_conflict == OnConflict::Skip
+                        && e.to_string().contains("400") =>
+                    {
+                        info!(
+                            "[{}] Skipping {} — already exists in repository",
+                            project.name, remote.filename
+                        );
+                        actions.push(SyncAction::Skipped {
+                            version: remote.version.clone(),
+                        });
+                    }
+                    Err(e) => {
+                        return Err(e)
+                            .with_context(|| format!("Failed to upload {}", remote.filename));
+                    }
+                }
             } else {
                 info!("[dry-run] Would upload {}", remote.filename);
                 actions.push(SyncAction::Uploaded {

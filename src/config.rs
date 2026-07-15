@@ -19,11 +19,30 @@ pub struct OpenRepoConfig {
     pub api_key: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum OnConflict {
+    /// Return an error if the package already exists (default).
+    Error,
+    /// Skip uploading if the package already exists.
+    Skip,
+    /// Overwrite the existing package.
+    Overwrite,
+}
+
+impl Default for OnConflict {
+    fn default() -> Self {
+        OnConflict::Error
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
     pub repo_uid: String,
     pub keep_versions: usize,
+    #[serde(default)]
+    pub on_conflict: OnConflict,
     pub source: SourceConfig,
 }
 

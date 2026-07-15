@@ -112,6 +112,12 @@ async fn main() -> Result<()> {
                 models::SyncAction::Uploaded { version } => {
                     info!("[{}] Uploaded version {}", result.project_name, version)
                 }
+                models::SyncAction::Skipped { version } => {
+                    info!(
+                        "[{}] Skipped version {} (already exists)",
+                        result.project_name, version
+                    )
+                }
                 models::SyncAction::Pruned { removed_count } => {
                     info!(
                         "[{}] Pruned {} old package(s)",

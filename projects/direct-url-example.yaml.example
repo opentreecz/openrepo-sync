@@ -12,6 +12,7 @@
 name: mypkg
 repo_uid: debian-custom
 keep_versions: 1
+on_conflict: skip          # skip, overwrite, or error (default) when package already exists
 
 source:
   type: direct_url

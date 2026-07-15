@@ -65,24 +65,18 @@ jobs:
           curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
             | sh -s -- -y --profile minimal --default-toolchain stable \
               --target ${{ matrix.target }}
-          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          # $GITHUB_PATH does not propagate into container steps; use $GITHUB_ENV instead.
+          echo "PATH=$HOME/.cargo/bin:$PATH" >> "$GITHUB_ENV"
 
       - name: Install Zig (cross linker/compiler used by cargo-zigbuild)
         run: |
           curl -L https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
           mkdir -p /opt/zig
           tar -xf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
-          echo "/opt/zig" >> "$GITHUB_PATH"
+          echo "PATH=/opt/zig:$PATH" >> "$GITHUB_ENV"
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: release-${{ matrix.target }}-
+      # actions/cache requires the runner toolkit (Node.js) which is not available
+      # inside debian:bookworm-slim — skip caching for the containerized build job.
 
       - name: Install cargo-zigbuild
         run: cargo install --locked cargo-zigbuild

@@ -120,7 +120,7 @@ jobs:
           ! file target/${{ matrix.target }}/release/openrepo-sync | grep -q "dynamically linked"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.arch }}
           path: target/${{ matrix.target }}/release/openrepo-sync
@@ -255,7 +255,7 @@ jobs:
           echo "rpm_file=$(basename $RPM_FILE)" >> "$GITHUB_ENV"
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.arch }}
           path: |

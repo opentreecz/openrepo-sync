@@ -17,7 +17,7 @@ jobs:
       tag: ${{ steps.bump.outputs.tag }}
       skip: ${{ steps.bump.outputs.skip }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -88,7 +88,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates curl git build-essential xz-utils file
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Rust toolchain + target
         run: |
@@ -120,7 +120,7 @@ jobs:
           ! file target/${{ matrix.target }}/release/openrepo-sync | grep -q "dynamically linked"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: binary-${{ matrix.arch }}
           path: target/${{ matrix.target }}/release/openrepo-sync
@@ -144,10 +144,10 @@ jobs:
             rpm_arch: armv7hl
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Download binary
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: binary-${{ matrix.arch }}
           path: dist/bin/
@@ -255,7 +255,7 @@ jobs:
           echo "rpm_file=$(basename $RPM_FILE)" >> "$GITHUB_ENV"
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.arch }}
           path: |
@@ -273,13 +273,13 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
 
       - name: Download all packages
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: packages-*
           merge-multiple: true
@@ -296,7 +296,7 @@ jobs:
           git push origin "${{ needs.version.outputs.tag }}"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name:   ${{ needs.version.outputs.tag }}
           name:       ${{ needs.version.outputs.tag }}

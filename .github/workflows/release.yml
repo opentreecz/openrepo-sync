@@ -30,32 +30,49 @@ jobs:
             exit 1
           fi
 
-  # ── 2. Build binaries for all target platforms ─────────────────────────────
+  # ── 2. Build fully static binaries for all target platforms ────────────────
+  # Built inside debian:bookworm-slim (matching the Dockerfile's runtime base)
+  # and linked against musl instead of glibc, so the resulting binary has no
+  # dynamic libc dependency at all — it can't drift out of sync with whatever
+  # glibc the image (or the GitHub Actions runner) happens to ship.
   build:
     name: Build · ${{ matrix.target }}
     needs: version
     runs-on: ubuntu-latest
+    container: debian:bookworm-slim
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
+          - target: x86_64-unknown-linux-musl
             arch:   amd64
-            strip:  strip
-          - target: aarch64-unknown-linux-gnu
+          - target: aarch64-unknown-linux-musl
             arch:   arm64
-            strip:  aarch64-linux-gnu-strip
-          - target: armv7-unknown-linux-gnueabihf
+          - target: armv7-unknown-linux-musleabihf
             arch:   armhf
-            strip:  arm-linux-gnueabihf-strip
 
     steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update -qq
+          apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential xz-utils file
+
       - uses: actions/checkout@v4
 
       - name: Install Rust toolchain + target
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain stable \
+              --target ${{ matrix.target }}
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install Zig (cross linker/compiler used by cargo-zigbuild)
+        run: |
+          curl -L https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
+          mkdir -p /opt/zig
+          tar -xf /tmp/zig.tar.xz -C /opt/zig --strip-components=1
+          echo "/opt/zig" >> "$GITHUB_PATH"
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -67,33 +84,16 @@ jobs:
           key: release-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: release-${{ matrix.target }}-
 
-      - name: Install cross-compilation toolchains
+      - name: Install cargo-zigbuild
+        run: cargo install --locked cargo-zigbuild
+
+      - name: Build static release binary
+        run: cargo zigbuild --release --target ${{ matrix.target }}
+
+      - name: Verify binary is statically linked
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            gcc-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabihf \
-            binutils-aarch64-linux-gnu \
-            binutils-arm-linux-gnueabihf \
-            libc6-dev-arm64-cross \
-            libc6-dev-armhf-cross
-
-      - name: Configure cross linkers
-        run: |
-          mkdir -p .cargo
-          cat >> .cargo/config.toml <<'EOF'
-          [target.aarch64-unknown-linux-gnu]
-          linker = "aarch64-linux-gnu-gcc"
-
-          [target.armv7-unknown-linux-gnueabihf]
-          linker = "arm-linux-gnueabihf-gcc"
-          EOF
-
-      - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Strip binary
-        run: ${{ matrix.strip }} target/${{ matrix.target }}/release/openrepo-sync
+          file target/${{ matrix.target }}/release/openrepo-sync
+          ! file target/${{ matrix.target }}/release/openrepo-sync | grep -q "dynamically linked"
 
       - name: Upload binary artifact
         uses: actions/upload-artifact@v4

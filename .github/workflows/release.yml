@@ -6,33 +6,58 @@ on:
       - main
 
 jobs:
-  # ── 1. Determine the next version from Cargo.toml ──────────────────────────
+  # ── 1. Bump version in Cargo.toml and push, then expose the new version ─────
   version:
     name: Read version
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
-      version: ${{ steps.read.outputs.version }}
-      tag: ${{ steps.read.outputs.tag }}
-      skip: ${{ steps.check.outputs.skip }}
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      skip: ${{ steps.bump.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Read version from Cargo.toml
-        id: read
+      - name: Bump version
+        id: bump
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag already exists
-        id: check
-        run: |
-          if git ls-remote --tags origin "${{ steps.read.outputs.tag }}" | grep -q .; then
-            echo "Tag ${{ steps.read.outputs.tag }} already exists — skipping release."
+          # Skip if this push is itself the version-bump commit to avoid a loop.
+          if git log -1 --pretty=%s | grep -q '^\[release\]'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          CURRENT=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+          MINOR=$(echo "$CURRENT" | cut -d. -f2)
+          PATCH=$(echo "$CURRENT" | cut -d. -f3)
+
+          MSG=$(git log -1 --pretty=%s)
+          if echo "$MSG" | grep -qi '\[major\]'; then
+            MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0
+          elif echo "$MSG" | grep -qi '\[minor\]'; then
+            MINOR=$((MINOR + 1)); PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+
+          NEW="$MAJOR.$MINOR.$PATCH"
+          sed -i "0,/^version = \".*\"/{s/^version = \".*\"/version = \"$NEW\"/}" Cargo.toml
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml
+          git commit -m "[release] bump version to $NEW"
+          git push origin main
+
+          echo "version=$NEW"   >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW"      >> "$GITHUB_OUTPUT"
+          echo "skip=false"     >> "$GITHUB_OUTPUT"
 
   # ── 2. Build fully static binaries for all target platforms ────────────────
   # Built inside debian:bookworm-slim (matching the Dockerfile's runtime base)
@@ -249,6 +274,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Download all packages
         uses: actions/download-artifact@v4

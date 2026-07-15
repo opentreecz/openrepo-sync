@@ -48,7 +48,19 @@ jobs:
           fi
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
 
+          # If the Release run skipped building (tag already existed), there are
+          # no artifacts — bail out cleanly instead of failing on download.
+          ARTIFACT_COUNT=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
+            --jq '.total_count')
+          if [ "$ARTIFACT_COUNT" = "0" ]; then
+            echo "Release run $RUN_ID produced no artifacts (tag already existed) — skipping Docker build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Download amd64 packages
+        if: steps.source.outputs.skip != 'true'
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
@@ -57,6 +69,7 @@ jobs:
           path:        docker-context/
 
       - name: Download arm64 packages
+        if: steps.source.outputs.skip != 'true'
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
@@ -65,6 +78,7 @@ jobs:
           path:        docker-context/
 
       - name: Download armhf packages
+        if: steps.source.outputs.skip != 'true'
         uses: dawidd6/action-download-artifact@v7
         with:
           workflow:    release.yml
@@ -73,19 +87,24 @@ jobs:
           path:        docker-context/
 
       - name: Copy Dockerfile into build context
+        if: steps.source.outputs.skip != 'true'
         run: cp Dockerfile docker-context/
 
       - name: List build context
+        if: steps.source.outputs.skip != 'true'
         run: ls -lh docker-context/
 
       # ── Multi-platform builder ───────────────────────────────────────────────
       - name: Set up QEMU
+        if: steps.source.outputs.skip != 'true'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: steps.source.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
+        if: steps.source.outputs.skip != 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -93,6 +112,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Docker metadata
+        if: steps.source.outputs.skip != 'true'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -103,6 +123,7 @@ jobs:
 
       # ── Build and push ───────────────────────────────────────────────────────
       - name: Build and push
+        if: steps.source.outputs.skip != 'true'
         id: push
         uses: docker/build-push-action@v6
         with:
@@ -124,6 +145,7 @@ jobs:
       # would run as command substitution) and filled in with envsubst,
       # restricted to the three placeholders it should touch.
       - name: Update release notes with Docker info
+        if: steps.source.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG:      ${{ steps.version.outputs.tag }}

@@ -55,7 +55,8 @@ impl DirectUrlSource {
             .error_for_status()
             .context("Download request error")?;
 
-        let original_filename = url_filename(&self.url);
+        // Resolve the real filename from Content-Disposition, final URL, or original URL.
+        let original_filename = resolve_filename(&resp, &self.url);
         let ext = Path::new(&original_filename)
             .extension()
             .and_then(|e| e.to_str())
@@ -107,6 +108,40 @@ pub(crate) fn url_filename(url: &str) -> String {
         .and_then(|s| s.split('?').next())
         .unwrap_or("package")
         .to_string()
+}
+
+/// Resolve the real filename from a completed response:
+/// 1. Content-Disposition: attachment; filename="foo.deb"
+/// 2. Final URL after redirects
+/// 3. Original request URL
+fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> String {
+    // Try Content-Disposition header first
+    if let Some(Ok(cd_str)) = resp
+        .headers()
+        .get("content-disposition")
+        .map(|cd| cd.to_str())
+    {
+        // Match filename="foo.deb" or filename=foo.deb
+        let re = regex::Regex::new(r#"filename\*?=(?:"([^"]+)"|([^\s;]+))"#).unwrap();
+        if let Some(name) = re.captures(cd_str).and_then(|caps| {
+            caps.get(1)
+                .or_else(|| caps.get(2))
+                .map(|m| m.as_str().trim().to_string())
+                .filter(|n| !n.is_empty())
+        }) {
+            return name;
+        }
+    }
+
+    // Try final URL after redirects
+    let final_url = resp.url().as_str();
+    let from_final = url_filename(final_url);
+    if !from_final.is_empty() && Path::new(&from_final).extension().is_some() {
+        return from_final;
+    }
+
+    // Fall back to original URL
+    url_filename(original_url)
 }
 
 pub(crate) fn rename_with_version(filename: &str, version: &PackageVersion) -> String {

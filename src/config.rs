@@ -19,21 +19,16 @@ pub struct OpenRepoConfig {
     pub api_key: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum OnConflict {
     /// Return an error if the package already exists (default).
+    #[default]
     Error,
     /// Skip uploading if the package already exists.
     Skip,
     /// Overwrite the existing package.
     Overwrite,
-}
-
-impl Default for OnConflict {
-    fn default() -> Self {
-        OnConflict::Error
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

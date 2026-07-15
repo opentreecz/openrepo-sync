@@ -87,8 +87,9 @@ async fn sync_project_inner(
                             version: remote.version.clone(),
                         });
                     }
-                    Err(e) if project.on_conflict == OnConflict::Skip
-                        && e.to_string().contains("400") =>
+                    Err(e)
+                        if project.on_conflict == OnConflict::Skip
+                            && e.to_string().contains("400") =>
                     {
                         info!(
                             "[{}] Skipping {} — already exists in repository",

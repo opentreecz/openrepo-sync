@@ -56,13 +56,22 @@ async fn sync_project_inner(
         repo_packages.len()
     );
 
-    // Find remote packages not already in the repo (by filename)
+    // Find remote packages not already in the repo (by filename or version).
+    // Version dedup is skipped for the raw "0" fallback to avoid false positives.
     let repo_filenames: std::collections::HashSet<_> =
         repo_packages.iter().map(|p| p.filename.as_str()).collect();
+    let repo_versions: std::collections::HashSet<_> = repo_packages
+        .iter()
+        .map(|p| p.version.to_string())
+        .collect();
 
     let to_upload: Vec<&RemotePackage> = remote_packages
         .iter()
-        .filter(|p| !repo_filenames.contains(p.filename.as_str()))
+        .filter(|p| {
+            let version_str = p.version.to_string();
+            !repo_filenames.contains(p.filename.as_str())
+                && (version_str == "0" || !repo_versions.contains(&version_str))
+        })
         .collect();
 
     if to_upload.is_empty() {

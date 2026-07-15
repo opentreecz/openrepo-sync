@@ -2,8 +2,8 @@ services:
   openrepo-sync:
     image: ghcr.io/opentreecz/openrepo-sync:latest
     volumes:
-      - ./config.yaml:/config.yaml:ro
-      - ./projects:/projects:ro
+      - ./config.yaml:/config.yaml:ro,z
+      - ./projects:/projects:ro,z
     environment:
       - OPENREPO_API_KEY=${OPENREPO_API_KEY}
     command: ["--config", "/config.yaml", "--projects", "/projects"]

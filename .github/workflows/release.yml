@@ -13,6 +13,7 @@ jobs:
     outputs:
       version: ${{ steps.read.outputs.version }}
       tag: ${{ steps.read.outputs.tag }}
+      skip: ${{ steps.check.outputs.skip }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +24,14 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
 
-      - name: Abort if tag already exists
+      - name: Check if tag already exists
+        id: check
         run: |
           if git ls-remote --tags origin "${{ steps.read.outputs.tag }}" | grep -q .; then
             echo "Tag ${{ steps.read.outputs.tag }} already exists — skipping release."
-            exit 1
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
   # ── 2. Build fully static binaries for all target platforms ────────────────
@@ -38,6 +42,7 @@ jobs:
   build:
     name: Build · ${{ matrix.target }}
     needs: version
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     container: debian:bookworm-slim
     strategy:
@@ -100,6 +105,7 @@ jobs:
   package:
     name: Package · ${{ matrix.arch }}
     needs: [version, build]
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -236,6 +242,7 @@ jobs:
   release:
     name: Create release
     needs: [version, package]
+    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -306,6 +306,20 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unversioned_packages_skip_version_dedup() {
+        // Both repo and remote resolve to raw version "0": the version match
+        // must NOT suppress the upload — only an identical filename would.
+        let server = MockServer::start(vec![list_of(&[("u1", "noversion.deb")])]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        let p = project("https://example.com/other.deb", 5, OnConflict::Error);
+        let result = sync_project(&p, &client, dir.path(), true).await;
+
+        assert!(matches!(&result.actions[0], SyncAction::Uploaded { .. }));
+    }
+
+    #[tokio::test]
     async fn dry_run_prunes_beyond_keep_versions() {
         let server = MockServer::start(vec![list_of(&[
             ("u1", "tool-1.0.0.deb"),

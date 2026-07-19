@@ -10,6 +10,7 @@ pub struct GithubSource {
     pub repo: String,
     pub asset_filter: Option<glob::Pattern>,
     pub prerelease: bool,
+    api_base: String,
     client: reqwest::Client,
 }
 
@@ -45,14 +46,22 @@ impl GithubSource {
             repo: repo.to_string(),
             asset_filter: pattern,
             prerelease,
+            api_base: "https://api.github.com".to_string(),
             client,
         })
     }
 
+    /// Point the source at a different API host (tests only).
+    #[cfg(test)]
+    fn with_api_base(mut self, base: &str) -> Self {
+        self.api_base = base.to_string();
+        self
+    }
+
     pub async fn fetch_latest(&self, n: usize) -> Result<Vec<RemotePackage>> {
         let base_url = format!(
-            "https://api.github.com/repos/{}/{}/releases",
-            self.owner, self.repo
+            "{}/repos/{}/{}/releases",
+            self.api_base, self.owner, self.repo
         );
 
         let mut packages = Vec::new();
@@ -274,5 +283,67 @@ mod tests {
             10,
         );
         assert_eq!(pkgs[0].version, PackageVersion::Raw("nightly".to_string()));
+    }
+
+    // ── fetch_latest over a mock API server ────────────────────────────────
+
+    use crate::test_util::{MockResponse, MockServer};
+
+    #[tokio::test]
+    async fn fetch_latest_paginates_until_empty_page() {
+        let page1 = r#"[{"tag_name":"v1.0.0","prerelease":false,"draft":false,
+            "assets":[{"name":"tool.deb","browser_download_url":"https://x/tool.deb"}]}]"#;
+        let server = MockServer::start(vec![
+            MockResponse::json(200, page1),
+            MockResponse::json(200, "[]"), // second page empty → stop
+        ]);
+        let source = GithubSource::new("acme", "tool", None, false)
+            .unwrap()
+            .with_api_base(&server.url);
+
+        let pkgs = source.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool.deb");
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /repos/acme/tool/releases?page=1"));
+        assert!(requests[1].starts_with("GET /repos/acme/tool/releases?page=2"));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_stops_once_n_collected() {
+        let page1 = r#"[{"tag_name":"v1.0.0","prerelease":false,"draft":false,
+            "assets":[{"name":"tool.deb","browser_download_url":"https://x/tool.deb"}]}]"#;
+        // Only one response: reaching n on page 1 must not request page 2.
+        let server = MockServer::start(vec![MockResponse::json(200, page1)]);
+        let source = GithubSource::new("acme", "tool", None, false)
+            .unwrap()
+            .with_api_base(&server.url);
+
+        let pkgs = source.fetch_latest(1).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(server.requests().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_api_error_fails() {
+        let server = MockServer::start(vec![MockResponse::json(500, "{}")]);
+        let source = GithubSource::new("acme", "tool", None, false)
+            .unwrap()
+            .with_api_base(&server.url);
+
+        let err = source.fetch_latest(1).await.unwrap_err();
+        assert!(err.to_string().contains("GitHub API error"));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_invalid_json_fails() {
+        let server = MockServer::start(vec![MockResponse::json(200, "not-json")]);
+        let source = GithubSource::new("acme", "tool", None, false)
+            .unwrap()
+            .with_api_base(&server.url);
+
+        let err = source.fetch_latest(1).await.unwrap_err();
+        assert!(err.to_string().contains("Failed to parse GitHub releases"));
     }
 }

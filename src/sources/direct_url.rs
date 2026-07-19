@@ -324,4 +324,14 @@ mod tests {
         let err = source.fetch_latest(1).await.unwrap_err();
         assert!(err.to_string().contains("Download request error"));
     }
+
+    #[tokio::test]
+    async fn latest_url_unsupported_payload_fails_version_extraction() {
+        // No Content-Disposition and no usable extension anywhere: the body
+        // is staged as .bin, which version extraction rejects.
+        let server = MockServer::start(vec![MockResponse::bytes(200, b"junk".to_vec(), &[])]);
+        let source = DirectUrlSource::new(&format!("{}/download", server.url), true).unwrap();
+        let err = source.fetch_latest(1).await.unwrap_err();
+        assert!(format!("{:#}", err).contains("Version extraction failed"));
+    }
 }

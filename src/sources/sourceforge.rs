@@ -10,6 +10,7 @@ pub struct SourceforgeSource {
     pub project: String,
     pub folder: Option<String>,
     pub filename_filter: Option<glob::Pattern>,
+    base_url: String,
     client: reqwest::Client,
 }
 
@@ -25,18 +26,26 @@ impl SourceforgeSource {
             project: project.to_string(),
             folder: folder.map(|s| s.trim_matches('/').to_string()),
             filename_filter: pattern,
+            base_url: "https://sourceforge.net".to_string(),
             client,
         })
+    }
+
+    /// Point the source at a different host (tests only).
+    #[cfg(test)]
+    fn with_base_url(mut self, base: &str) -> Self {
+        self.base_url = base.to_string();
+        self
     }
 
     pub async fn fetch_latest(&self, n: usize) -> Result<Vec<RemotePackage>> {
         let folder_path = self.folder.as_deref().unwrap_or("");
         let url = if folder_path.is_empty() {
-            format!("https://sourceforge.net/projects/{}/files/", self.project)
+            format!("{}/projects/{}/files/", self.base_url, self.project)
         } else {
             format!(
-                "https://sourceforge.net/projects/{}/files/{}/",
-                self.project, folder_path
+                "{}/projects/{}/files/{}/",
+                self.base_url, self.project, folder_path
             )
         };
         debug!("Fetching SourceForge listing from {}", url);
@@ -235,5 +244,53 @@ mod tests {
             .parse_files("<html><body>no table here</body></html>", 10)
             .unwrap();
         assert!(pkgs.is_empty());
+    }
+
+    // ── fetch_latest over a mock server ────────────────────────────────────
+
+    use crate::test_util::{MockResponse, MockServer};
+
+    #[tokio::test]
+    async fn fetch_latest_requests_project_files_and_parses() {
+        let html = listing(&file_row(
+            "tool-1.2.0.deb",
+            "/projects/proj/files/tool-1.2.0.deb/download",
+        ));
+        let server = MockServer::start(vec![MockResponse::json(200, &html)]);
+        let source = SourceforgeSource::new("proj", None, None)
+            .unwrap()
+            .with_base_url(&server.url);
+
+        let pkgs = source.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool-1.2.0.deb");
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /projects/proj/files/ "));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_includes_folder_in_url() {
+        let server = MockServer::start(vec![MockResponse::json(200, &listing(""))]);
+        let source = SourceforgeSource::new("proj", Some("releases/linux"), None)
+            .unwrap()
+            .with_base_url(&server.url);
+
+        let pkgs = source.fetch_latest(10).await.unwrap();
+        assert!(pkgs.is_empty());
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /projects/proj/files/releases/linux/ "));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_page_error_fails() {
+        let server = MockServer::start(vec![MockResponse::json(404, "gone")]);
+        let source = SourceforgeSource::new("proj", None, None)
+            .unwrap()
+            .with_base_url(&server.url);
+
+        let err = source.fetch_latest(1).await.unwrap_err();
+        assert!(err.to_string().contains("SourceForge page error"));
     }
 }

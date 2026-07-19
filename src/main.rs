@@ -63,6 +63,18 @@ async fn main() -> Result<()> {
 
     init_logging(cli.verbose);
 
+    let had_error = run(&cli).await?;
+    if had_error {
+        std::process::exit(1);
+    }
+
+    Ok(())
+}
+
+/// Load configuration, authenticate, and sync all selected projects.
+/// Returns whether any project reported an error (the caller decides the
+/// process exit code, keeping this testable).
+async fn run(cli: &Cli) -> Result<bool> {
     debug!("Loading config from {}", cli.config.display());
     let global = config::GlobalConfig::load(&cli.config)
         .with_context(|| format!("Failed to load config from {}", cli.config.display()))?;
@@ -134,11 +146,7 @@ async fn main() -> Result<()> {
         }
     }
 
-    if had_error {
-        std::process::exit(1);
-    }
-
-    Ok(())
+    Ok(had_error)
 }
 
 fn init_logging(verbose: bool) {
@@ -229,5 +237,117 @@ mod tests {
         let man = render_man_page().unwrap();
         assert!(man.contains("openrepo-sync"));
         assert!(man.contains(".TH"), "expected roff output");
+    }
+
+    // ── run(): end-to-end over a mock OpenRepo server ──────────────────────
+
+    use crate::test_util::{MockResponse, MockServer};
+
+    /// Write a config.yaml + one direct_url project and return a Cli set up
+    /// to use them in dry-run mode.
+    fn setup_workspace(dir: &std::path::Path, api_url: &str) -> Cli {
+        let config_path = dir.join("config.yaml");
+        std::fs::write(
+            &config_path,
+            format!(
+                "openrepo:\n  api_url: \"{}\"\n  api_key: \"test-key\"\ndownload_dir: \"{}\"\n",
+                api_url,
+                dir.join("downloads").display()
+            ),
+        )
+        .unwrap();
+
+        let projects_dir = dir.join("projects");
+        std::fs::create_dir_all(&projects_dir).unwrap();
+        std::fs::write(
+            projects_dir.join("tool.yaml"),
+            "name: tool\nrepo_uid: r\nkeep_versions: 5\nsource:\n  type: direct_url\n  url: \"https://example.com/tool-1.0.0.deb\"\n",
+        )
+        .unwrap();
+
+        Cli {
+            config: config_path,
+            projects: projects_dir,
+            project: None,
+            dry_run: true,
+            verbose: false,
+            generate_man: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn run_syncs_project_against_server_without_errors() {
+        let server = MockServer::start(vec![
+            MockResponse::json(200, r#"{"username":"alice"}"#), // whoami
+            MockResponse::json(200, r#"{"results":[],"next":null}"#), // list
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let cli = setup_workspace(dir.path(), &server.url);
+
+        let had_error = run(&cli).await.unwrap();
+        assert!(!had_error);
+    }
+
+    #[tokio::test]
+    async fn run_reports_error_when_sync_fails() {
+        let server = MockServer::start(vec![
+            MockResponse::json(200, r#"{"username":"alice"}"#), // whoami
+            MockResponse::json(500, "boom"),                    // list fails
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let cli = setup_workspace(dir.path(), &server.url);
+
+        let had_error = run(&cli).await.unwrap();
+        assert!(had_error);
+    }
+
+    #[tokio::test]
+    async fn run_filters_to_selected_project() {
+        let server = MockServer::start(vec![
+            MockResponse::json(200, r#"{"username":"alice"}"#),
+            MockResponse::json(200, r#"{"results":[],"next":null}"#),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let mut cli = setup_workspace(dir.path(), &server.url);
+        cli.project = Some("tool".to_string());
+
+        let had_error = run(&cli).await.unwrap();
+        assert!(!had_error);
+    }
+
+    #[tokio::test]
+    async fn run_fails_for_unknown_project_name() {
+        let server = MockServer::start(vec![MockResponse::json(200, r#"{"username":"alice"}"#)]);
+        let dir = tempfile::tempdir().unwrap();
+        let mut cli = setup_workspace(dir.path(), &server.url);
+        cli.project = Some("nope".to_string());
+
+        let err = run(&cli).await.unwrap_err();
+        assert!(err.to_string().contains("No project named 'nope'"));
+    }
+
+    #[tokio::test]
+    async fn run_fails_for_missing_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let cli = Cli {
+            config: dir.path().join("missing.yaml"),
+            projects: dir.path().join("projects"),
+            project: None,
+            dry_run: true,
+            verbose: false,
+            generate_man: false,
+        };
+        let err = run(&cli).await.unwrap_err();
+        assert!(err.to_string().contains("Failed to load config"));
+    }
+
+    #[tokio::test]
+    async fn run_fails_when_authentication_is_rejected() {
+        let server = MockServer::start(vec![MockResponse::json(401, "{}")]);
+        let dir = tempfile::tempdir().unwrap();
+        let cli = setup_workspace(dir.path(), &server.url);
+
+        let err = run(&cli).await.unwrap_err();
+        assert!(err.to_string().contains("Authentication check failed"));
     }
 }

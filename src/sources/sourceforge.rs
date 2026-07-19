@@ -5,6 +5,7 @@ use tracing::debug;
 use crate::models::{PackageVersion, RemotePackage};
 use crate::version::extract_version_from_filename;
 
+#[derive(Debug)]
 pub struct SourceforgeSource {
     pub project: String,
     pub folder: Option<String>,
@@ -104,5 +105,135 @@ impl SourceforgeSource {
         // Sort descending by version so newest is first
         packages.sort_by(|a, b| b.version.cmp(&a.version));
         Ok(packages.into_iter().take(n).collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn listing(rows: &str) -> String {
+        format!(
+            r#"<html><body><table id="files_list"><tbody>{}</tbody></table></body></html>"#,
+            rows
+        )
+    }
+
+    fn file_row(title: &str, href: &str) -> String {
+        format!(
+            r#"<tr title="{t}"><th class="name"><a href="{h}">{t}</a></th></tr>"#,
+            t = title,
+            h = href
+        )
+    }
+
+    #[test]
+    fn new_trims_folder_slashes() {
+        let s = SourceforgeSource::new("proj", Some("/releases/linux/"), None).unwrap();
+        assert_eq!(s.folder.as_deref(), Some("releases/linux"));
+    }
+
+    #[test]
+    fn new_rejects_invalid_filter() {
+        let err = SourceforgeSource::new("proj", None, Some("[bad")).unwrap_err();
+        assert!(err.to_string().contains("Invalid filename_filter"));
+    }
+
+    #[test]
+    fn parses_file_rows_and_builds_absolute_urls() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let html = listing(&file_row(
+            "tool-1.2.0.deb",
+            "/projects/proj/files/tool-1.2.0.deb/download",
+        ));
+        let pkgs = source.parse_files(&html, 10).unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool-1.2.0.deb");
+        assert_eq!(pkgs[0].version, PackageVersion::parse("1.2.0"));
+        assert_eq!(
+            pkgs[0].download_url,
+            "https://sourceforge.net/projects/proj/files/tool-1.2.0.deb/download"
+        );
+    }
+
+    #[test]
+    fn absolute_href_is_kept_as_is() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let html = listing(&file_row(
+            "tool-1.0.0.deb",
+            "https://mirror.example.com/tool-1.0.0.deb",
+        ));
+        let pkgs = source.parse_files(&html, 10).unwrap();
+        assert_eq!(
+            pkgs[0].download_url,
+            "https://mirror.example.com/tool-1.0.0.deb"
+        );
+    }
+
+    #[test]
+    fn directory_rows_without_extension_are_skipped() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let html = listing(&format!(
+            "{}{}",
+            file_row("subfolder", "/projects/proj/files/subfolder/"),
+            file_row(
+                "tool-2.0.0.deb",
+                "/projects/proj/files/tool-2.0.0.deb/download"
+            ),
+        ));
+        let pkgs = source.parse_files(&html, 10).unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool-2.0.0.deb");
+    }
+
+    #[test]
+    fn filename_filter_is_applied() {
+        let source = SourceforgeSource::new("proj", None, Some("*.deb")).unwrap();
+        let html = listing(&format!(
+            "{}{}",
+            file_row(
+                "tool-1.0.0.rpm",
+                "/projects/proj/files/tool-1.0.0.rpm/download"
+            ),
+            file_row(
+                "tool-1.0.0.deb",
+                "/projects/proj/files/tool-1.0.0.deb/download"
+            ),
+        ));
+        let pkgs = source.parse_files(&html, 10).unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool-1.0.0.deb");
+    }
+
+    #[test]
+    fn results_sorted_newest_first_and_truncated_to_n() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let html = listing(&format!(
+            "{}{}{}",
+            file_row("tool-1.0.0.deb", "/a/download"),
+            file_row("tool-3.0.0.deb", "/b/download"),
+            file_row("tool-2.0.0.deb", "/c/download"),
+        ));
+        let pkgs = source.parse_files(&html, 2).unwrap();
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].version, PackageVersion::parse("3.0.0"));
+        assert_eq!(pkgs[1].version, PackageVersion::parse("1.0.0"));
+    }
+
+    #[test]
+    fn unversioned_file_falls_back_to_raw_zero() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let html = listing(&file_row("README.txt", "/r/download"));
+        let pkgs = source.parse_files(&html, 10).unwrap();
+        assert_eq!(pkgs[0].version, PackageVersion::Raw("0".to_string()));
+    }
+
+    #[test]
+    fn empty_listing_yields_no_packages() {
+        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let pkgs = source
+            .parse_files("<html><body>no table here</body></html>", 10)
+            .unwrap();
+        assert!(pkgs.is_empty());
     }
 }

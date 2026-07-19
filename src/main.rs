@@ -3,6 +3,8 @@ mod models;
 mod repo_client;
 mod sources;
 mod sync;
+#[cfg(test)]
+mod test_util;
 mod version;
 
 use anyhow::{Context, Result};
@@ -158,10 +160,74 @@ fn init_logging(verbose: bool) {
 }
 
 fn generate_man_page() -> Result<()> {
+    print!("{}", render_man_page()?);
+    Ok(())
+}
+
+fn render_man_page() -> Result<String> {
     let cmd = Cli::command();
     let man = clap_mangen::Man::new(cmd);
     let mut buf = Vec::new();
     man.render(&mut buf)?;
-    print!("{}", String::from_utf8(buf)?);
-    Ok(())
+    Ok(String::from_utf8(buf)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_definition_is_valid() {
+        Cli::command().debug_assert();
+    }
+
+    #[test]
+    fn cli_defaults() {
+        let cli = Cli::try_parse_from(["openrepo-sync"]).unwrap();
+        assert_eq!(cli.config, PathBuf::from("config.yaml"));
+        assert_eq!(cli.projects, PathBuf::from("projects"));
+        assert!(cli.project.is_none());
+        assert!(!cli.dry_run);
+        assert!(!cli.verbose);
+        assert!(!cli.generate_man);
+    }
+
+    #[test]
+    fn cli_parses_all_flags() {
+        let cli = Cli::try_parse_from([
+            "openrepo-sync",
+            "--config",
+            "/etc/openrepo/config.yaml",
+            "--projects",
+            "/etc/openrepo/projects",
+            "--project",
+            "curl",
+            "--dry-run",
+            "--verbose",
+        ])
+        .unwrap();
+        assert_eq!(cli.config, PathBuf::from("/etc/openrepo/config.yaml"));
+        assert_eq!(cli.projects, PathBuf::from("/etc/openrepo/projects"));
+        assert_eq!(cli.project.as_deref(), Some("curl"));
+        assert!(cli.dry_run);
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn cli_short_verbose_flag() {
+        let cli = Cli::try_parse_from(["openrepo-sync", "-v"]).unwrap();
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn cli_rejects_unknown_flag() {
+        assert!(Cli::try_parse_from(["openrepo-sync", "--bogus"]).is_err());
+    }
+
+    #[test]
+    fn man_page_renders_with_command_name() {
+        let man = render_man_page().unwrap();
+        assert!(man.contains("openrepo-sync"));
+        assert!(man.contains(".TH"), "expected roff output");
+    }
 }

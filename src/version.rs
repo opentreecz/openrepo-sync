@@ -121,4 +121,44 @@ mod tests {
         let err = extract_version_from_package(path).unwrap_err();
         assert!(err.to_string().contains("Unsupported package type"));
     }
+
+    #[test]
+    fn no_extension_returns_error() {
+        let err = extract_version_from_package(std::path::Path::new("somefile")).unwrap_err();
+        assert!(err.to_string().contains("Unsupported package type"));
+    }
+
+    // ── dpkg/rpm extraction error paths ────────────────────────────────────
+
+    #[test]
+    fn dpkg_extraction_fails_for_missing_file() {
+        let err = extract_version_dpkg(std::path::Path::new("/nonexistent/pkg.deb")).unwrap_err();
+        // Either dpkg-deb is absent or it rejects the missing file — both are errors.
+        assert!(err.to_string().contains("dpkg"));
+    }
+
+    #[test]
+    fn rpm_extraction_fails_for_missing_file() {
+        let err = extract_version_rpm(std::path::Path::new("/nonexistent/pkg.rpm")).unwrap_err();
+        assert!(err.to_string().contains("rpm"));
+    }
+
+    // ── dpkg extraction happy path with a real minimal .deb ────────────────
+
+    use crate::test_util::{build_minimal_deb, dpkg_deb_available};
+
+    #[test]
+    fn dpkg_extraction_reads_version_from_real_deb() {
+        if !dpkg_deb_available() {
+            eprintln!("skipping: dpkg-deb not available");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let deb = build_minimal_deb(dir.path(), "1.4.2");
+        assert_eq!(extract_version_dpkg(&deb).unwrap(), "1.4.2");
+        assert_eq!(
+            extract_version_from_package(&deb).unwrap(),
+            PackageVersion::parse("1.4.2")
+        );
+    }
 }

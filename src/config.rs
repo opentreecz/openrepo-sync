@@ -261,4 +261,113 @@ source:
         let result = super::expand_env_vars("plain string without vars");
         assert_eq!(result, "plain string without vars");
     }
+
+    // ── GlobalConfig::load (filesystem) ────────────────────────────────────
+
+    #[test]
+    fn load_reads_file_and_expands_env_vars() {
+        // SAFETY: no concurrent env access to this variable in the test binary
+        unsafe { std::env::set_var("TEST_LOAD_API_KEY", "from-env") };
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(
+            &path,
+            "openrepo:\n  api_url: \"https://repo.example.com\"\n  api_key: \"${TEST_LOAD_API_KEY}\"\n",
+        )
+        .unwrap();
+
+        let cfg = GlobalConfig::load(&path).unwrap();
+        assert_eq!(cfg.openrepo.api_key, "from-env");
+    }
+
+    #[test]
+    fn load_missing_file_is_a_clear_error() {
+        let err = GlobalConfig::load(std::path::Path::new("/nonexistent/config.yaml")).unwrap_err();
+        assert!(err.to_string().contains("Failed to read config file"));
+    }
+
+    #[test]
+    fn load_invalid_yaml_is_a_parse_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.yaml");
+        std::fs::write(&path, "openrepo: [not, a, mapping").unwrap();
+        let err = GlobalConfig::load(&path).unwrap_err();
+        assert!(err.to_string().contains("Failed to parse config file"));
+    }
+
+    // ── ProjectConfig::load_all (filesystem) ───────────────────────────────
+
+    fn write_project(dir: &std::path::Path, file: &str, name: &str) {
+        std::fs::write(
+            dir.join(file),
+            format!(
+                "name: {}\nrepo_uid: r\nkeep_versions: 1\nsource:\n  type: direct_url\n  url: \"https://example.com/x.deb\"\n",
+                name
+            ),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn load_all_reads_yaml_and_yml_sorted_by_name() {
+        let dir = tempfile::tempdir().unwrap();
+        write_project(dir.path(), "zeta.yaml", "zeta");
+        write_project(dir.path(), "alpha.yml", "alpha");
+        std::fs::write(dir.path().join("notes.txt"), "not a project").unwrap();
+
+        let projects = ProjectConfig::load_all(dir.path()).unwrap();
+        assert_eq!(projects.len(), 2);
+        assert_eq!(projects[0].name, "alpha");
+        assert_eq!(projects[1].name, "zeta");
+    }
+
+    #[test]
+    fn load_all_missing_dir_is_a_clear_error() {
+        let err =
+            ProjectConfig::load_all(std::path::Path::new("/nonexistent/projects")).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("Failed to read projects directory")
+        );
+    }
+
+    #[test]
+    fn load_all_invalid_project_file_is_a_parse_error() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("bad.yaml"), "name: [broken").unwrap();
+        let err = ProjectConfig::load_all(dir.path()).unwrap_err();
+        assert!(err.to_string().contains("Failed to parse project file"));
+    }
+
+    // ── OnConflict ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn on_conflict_defaults_to_error() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: direct_url
+  url: "https://example.com/x.deb"
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(p.on_conflict, OnConflict::Error);
+    }
+
+    #[test]
+    fn on_conflict_parses_snake_case_variants() {
+        for (text, expected) in [
+            ("skip", OnConflict::Skip),
+            ("overwrite", OnConflict::Overwrite),
+            ("error", OnConflict::Error),
+        ] {
+            let yaml = format!(
+                "name: t\nrepo_uid: r\nkeep_versions: 1\non_conflict: {}\nsource:\n  type: direct_url\n  url: \"https://x/y.deb\"\n",
+                text
+            );
+            let p: ProjectConfig = serde_yaml::from_str(&yaml).unwrap();
+            assert_eq!(p.on_conflict, expected);
+        }
+    }
 }

@@ -253,4 +253,75 @@ mod tests {
         let pkgs = source.fetch_latest(1).await.unwrap();
         assert_eq!(pkgs[0].version, PackageVersion::Raw("0".to_string()));
     }
+
+    // ── fetch_latest_url: full download + version detection round trip ─────
+
+    use crate::test_util::{MockResponse, MockServer, build_minimal_deb, dpkg_deb_available};
+
+    #[tokio::test]
+    async fn latest_url_detects_version_and_persists_package() {
+        if !dpkg_deb_available() {
+            eprintln!("skipping: dpkg-deb not available");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let deb = build_minimal_deb(dir.path(), "2.5.0");
+        let deb_bytes = std::fs::read(&deb).unwrap();
+
+        let server = MockServer::start(vec![MockResponse::bytes(
+            200,
+            deb_bytes,
+            &[(
+                "Content-Disposition",
+                r#"attachment; filename="testpkg-LATEST.deb""#,
+            )],
+        )]);
+
+        let source = DirectUrlSource::new(&format!("{}/download", server.url), true).unwrap();
+        let pkgs = source.fetch_latest(1).await.unwrap();
+
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].version, PackageVersion::parse("2.5.0"));
+        // LATEST in the Content-Disposition filename is replaced by the
+        // version read out of the package itself.
+        assert_eq!(pkgs[0].filename, "testpkg-2.5.0.deb");
+
+        // The package is persisted for sync.rs to pick up via file://.
+        let path = pkgs[0].download_url.strip_prefix("file://").unwrap();
+        assert!(std::path::Path::new(path).exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn latest_url_names_file_from_final_url_without_content_disposition() {
+        if !dpkg_deb_available() {
+            eprintln!("skipping: dpkg-deb not available");
+            return;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let deb = build_minimal_deb(dir.path(), "3.1.0");
+        let deb_bytes = std::fs::read(&deb).unwrap();
+
+        let server = MockServer::start(vec![MockResponse::bytes(200, deb_bytes, &[])]);
+
+        // No Content-Disposition: the filename comes from the URL, which has
+        // an extension, and gets the detected version appended.
+        let source = DirectUrlSource::new(&format!("{}/mytool.deb", server.url), true).unwrap();
+        let pkgs = source.fetch_latest(1).await.unwrap();
+
+        assert_eq!(pkgs[0].version, PackageVersion::parse("3.1.0"));
+        assert_eq!(pkgs[0].filename, "mytool_3.1.0.deb");
+
+        let path = pkgs[0].download_url.strip_prefix("file://").unwrap();
+        assert!(std::path::Path::new(path).exists());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn latest_url_download_error_fails() {
+        let server = MockServer::start(vec![MockResponse::json(500, "boom")]);
+        let source = DirectUrlSource::new(&format!("{}/download", server.url), true).unwrap();
+        let err = source.fetch_latest(1).await.unwrap_err();
+        assert!(err.to_string().contains("Download request error"));
+    }
 }

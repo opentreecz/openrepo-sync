@@ -79,10 +79,8 @@ impl GithubSource {
                 .iter()
                 .any(|a| a.eq_ignore_ascii_case(&arch_lower));
             if name_lower.contains(&arch_lower)
-                || (is_amd64_entry
-                    && AMD64_ALIASES.iter().any(|a| name_lower.contains(*a)))
-                || (is_arm64_entry
-                    && ARM64_ALIASES.iter().any(|a| name_lower.contains(*a)))
+                || (is_amd64_entry && AMD64_ALIASES.iter().any(|a| name_lower.contains(*a)))
+                || (is_arm64_entry && ARM64_ALIASES.iter().any(|a| name_lower.contains(*a)))
             {
                 Some(i)
             } else {
@@ -241,8 +239,7 @@ mod tests {
 
     #[test]
     fn invalid_asset_filter_is_rejected() {
-        let err =
-            GithubSource::new("acme", "tool", Some("[bad"), false, vec![]).unwrap_err();
+        let err = GithubSource::new("acme", "tool", Some("[bad"), false, vec![]).unwrap_err();
         assert!(err.to_string().contains("Invalid asset_filter"));
     }
 
@@ -376,10 +373,7 @@ mod tests {
                 "v1.0.0",
                 false,
                 false,
-                vec![
-                    asset("tool_1.0.0_arm64.deb"),
-                    asset("tool_1.0.0_amd64.deb"),
-                ],
+                vec![asset("tool_1.0.0_arm64.deb"), asset("tool_1.0.0_amd64.deb")],
             )],
             10,
         );
@@ -390,14 +384,8 @@ mod tests {
     #[test]
     fn arch_filter_x86_64_alias_matches_amd64_entry() {
         // An asset named with "x86_64" should match an arch_filter entry of "amd64".
-        let source = GithubSource::new(
-            "acme",
-            "tool",
-            None,
-            false,
-            vec!["amd64".to_string()],
-        )
-        .unwrap();
+        let source =
+            GithubSource::new("acme", "tool", None, false, vec!["amd64".to_string()]).unwrap();
         let pkgs = collect(
             &source,
             vec![release(
@@ -432,10 +420,7 @@ mod tests {
                 "v1.0.0",
                 false,
                 false,
-                vec![
-                    asset("tool_1.0.0_amd64.deb"),
-                    asset("tool_1.0.0_arm64.deb"),
-                ],
+                vec![asset("tool_1.0.0_amd64.deb"), asset("tool_1.0.0_arm64.deb")],
             )],
             10,
         );
@@ -453,7 +438,10 @@ mod tests {
                 "v1.0.0",
                 false,
                 false,
-                vec![asset("tool_1.0.0_generic.deb"), asset("tool_1.0.0_other.deb")],
+                vec![
+                    asset("tool_1.0.0_generic.deb"),
+                    asset("tool_1.0.0_other.deb"),
+                ],
             )],
             10,
         );
@@ -488,19 +476,13 @@ mod tests {
                     "v2.0.0",
                     false,
                     false,
-                    vec![
-                        asset("tool_2.0.0_arm64.deb"),
-                        asset("tool_2.0.0_amd64.deb"),
-                    ],
+                    vec![asset("tool_2.0.0_arm64.deb"), asset("tool_2.0.0_amd64.deb")],
                 ),
                 release(
                     "v1.0.0",
                     false,
                     false,
-                    vec![
-                        asset("tool_1.0.0_arm64.deb"),
-                        asset("tool_1.0.0_amd64.deb"),
-                    ],
+                    vec![asset("tool_1.0.0_arm64.deb"), asset("tool_1.0.0_amd64.deb")],
                 ),
             ],
             10,

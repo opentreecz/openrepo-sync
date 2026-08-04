@@ -6,6 +6,13 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/pages.yml'
+      - '.github/workflows/ci.yml'
+
+  # Also rebuild pages when new coverage artifact is uploaded
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
   workflow_dispatch:
 
@@ -23,10 +30,25 @@ jobs:
     name: Build site
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
+
+      # Download the latest coverage HTML report and embed it into docs/
+      - name: Download coverage report
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          RUN_ID=$(gh run list --repo "${{ github.repository }}" \
+            --workflow ci.yml --branch main --status success \
+            --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || true)
+          if [ -n "$RUN_ID" ]; then
+            gh run download "$RUN_ID" \
+              --repo "${{ github.repository }}" \
+              --name coverage-report \
+              --dir docs/coverage-report/ 2>/dev/null || true
+          fi
 
       - name: Setup Pages
-        uses: actions/configure-pages@v6
+        uses: actions/configure-pages@v5
 
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
@@ -35,7 +57,7 @@ jobs:
           destination: ./_site
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+        uses: actions/upload-pages-artifact@v3
         with:
           path: ./_site
 
@@ -49,4 +71,4 @@ jobs:
     steps:
       - name: Deploy to GitHub Pages
         id: deploy
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@v4

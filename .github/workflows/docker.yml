@@ -19,7 +19,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Read version from Cargo.toml
         id: version
@@ -28,7 +28,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
 
-      # ── Download the .deb packages built by the release workflow ────────────
+      # ── Resolve which Release run to pull artifacts from ────────────────────
       # On workflow_run the triggering run's ID is used directly; on manual
       # dispatch, fall back to the newest successful Release run on main.
       - name: Resolve source Release run
@@ -53,7 +53,7 @@ jobs:
           ARTIFACT_COUNT=$(gh api "repos/${{ github.repository }}/actions/runs/$RUN_ID/artifacts" \
             --jq '.total_count')
           if [ "$ARTIFACT_COUNT" = "0" ]; then
-            echo "Release run $RUN_ID produced no artifacts (tag already existed) — skipping Docker build."
+            echo "Release run $RUN_ID produced no artifacts — skipping Docker build."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -97,15 +97,15 @@ jobs:
       # ── Multi-platform builder ───────────────────────────────────────────────
       - name: Set up QEMU
         if: steps.source.outputs.skip != 'true'
-        uses: docker/setup-qemu-action@v4
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         if: steps.source.outputs.skip != 'true'
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@v3
 
       - name: Log in to GHCR
         if: steps.source.outputs.skip != 'true'
-        uses: docker/login-action@v4
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -114,7 +114,7 @@ jobs:
       - name: Docker metadata
         if: steps.source.outputs.skip != 'true'
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/openrepo-sync
           tags: |
@@ -125,7 +125,7 @@ jobs:
       - name: Build and push
         if: steps.source.outputs.skip != 'true'
         id: push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@v6
         with:
           context:   docker-context/
           file:      docker-context/Dockerfile
@@ -140,10 +140,6 @@ jobs:
           cache-to:   type=gha,mode=max
 
       # ── Add Docker section to the GitHub release notes ───────────────────────
-      # The section template is written with a quoted heredoc (no shell
-      # expansion — the ``` fences must never reach eval/echo, where backticks
-      # would run as command substitution) and filled in with envsubst,
-      # restricted to the three placeholders it should touch.
       - name: Update release notes with Docker info
         if: steps.source.outputs.skip != 'true'
         env:
@@ -153,8 +149,6 @@ jobs:
           REPO:     ${{ github.repository }}
           OWNER:    ${{ github.repository_owner }}
         run: |
-          # Keep everything before any previously written Docker section, so
-          # re-runs replace it instead of appending a duplicate.
           command -v envsubst >/dev/null \
             || sudo apt-get install -y --no-install-recommends gettext-base
 

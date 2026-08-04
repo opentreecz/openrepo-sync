@@ -6,7 +6,8 @@ on:
       - main
 
 jobs:
-  # ── 1. Bump version in Cargo.toml and push, then expose the new version ─────
+  # ── 1. Check whether this push should trigger a release ────────────────────
+  # Skip if it is the version-bump commit itself (avoids an infinite loop).
   version:
     name: Read version
     runs-on: ubuntu-latest
@@ -14,10 +15,10 @@ jobs:
       contents: write
     outputs:
       version: ${{ steps.bump.outputs.version }}
-      tag: ${{ steps.bump.outputs.tag }}
-      skip: ${{ steps.bump.outputs.skip }}
+      tag:     ${{ steps.bump.outputs.tag }}
+      skip:    ${{ steps.bump.outputs.skip }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
@@ -49,9 +50,12 @@ jobs:
           NEW="$MAJOR.$MINOR.$PATCH"
           sed -i "0,/^version = \".*\"/{s/^version = \".*\"/version = \"$NEW\"/}" Cargo.toml
 
+          # Keep Cargo.lock in sync so the version-bump commit is complete.
+          cargo update --workspace --quiet 2>/dev/null || true
+
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Cargo.toml
+          git add Cargo.toml Cargo.lock
           git commit -m "[release] bump version to $NEW"
           git push origin main
 
@@ -59,15 +63,50 @@ jobs:
           echo "tag=v$NEW"      >> "$GITHUB_OUTPUT"
           echo "skip=false"     >> "$GITHUB_OUTPUT"
 
-  # ── 2. Build fully static binaries for all target platforms ────────────────
-  # Built inside debian:bookworm-slim (matching the Dockerfile's runtime base)
-  # and linked against musl instead of glibc, so the resulting binary has no
-  # dynamic libc dependency at all — it can't drift out of sync with whatever
-  # glibc the image (or the GitHub Actions runner) happens to ship.
-  build:
-    name: Build · ${{ matrix.target }}
+  # ── 2. Gate on CI passing for the version-bump commit ──────────────────────
+  # Wait for the CI workflow triggered by the version-bump push to complete
+  # before building artifacts. This prevents releasing a broken build.
+  wait-ci:
+    name: Wait for CI
     needs: version
     if: needs.version.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI checks on the bump commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Give CI a few seconds to register the new run before we start polling.
+          sleep 15
+
+          REPO="${{ github.repository }}"
+          # The version-bump is the HEAD of main at this point.
+          COMMIT=$(git ls-remote https://github.com/$REPO refs/heads/main | cut -f1)
+
+          echo "Waiting for CI on commit $COMMIT …"
+          for i in $(seq 1 40); do
+            STATUS=$(gh api "repos/$REPO/commits/$COMMIT/check-runs" \
+              --jq '[.check_runs[] | select(.name | test("Formatting|Clippy|Test"))]
+                    | if length == 0 then "pending"
+                      elif all(.status == "completed") then
+                        if all(.conclusion == "success") then "success" else "failure" end
+                      else "pending" end')
+            echo "  attempt $i: $STATUS"
+            if [ "$STATUS" = "success" ]; then exit 0; fi
+            if [ "$STATUS" = "failure" ]; then
+              echo "CI failed — aborting release." >&2; exit 1
+            fi
+            sleep 30
+          done
+          echo "Timed out waiting for CI." >&2
+          exit 1
+
+  # ── 3. Build fully static binaries for all target platforms ────────────────
+  # Built inside debian:bookworm-slim (matching the Dockerfile's runtime base)
+  # and linked against musl instead of glibc for zero dynamic-libc dependency.
+  build:
+    name: Build · ${{ matrix.target }}
+    needs: wait-ci
     runs-on: ubuntu-latest
     container: debian:bookworm-slim
     strategy:
@@ -88,7 +127,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             ca-certificates curl git build-essential xz-utils file
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Install Rust toolchain + target
         run: |
@@ -98,7 +137,7 @@ jobs:
           # $GITHUB_PATH does not propagate into container steps; use $GITHUB_ENV instead.
           echo "PATH=$HOME/.cargo/bin:$PATH" >> "$GITHUB_ENV"
 
-      - name: Install Zig (cross linker/compiler used by cargo-zigbuild)
+      - name: Install Zig (cross linker used by cargo-zigbuild)
         run: |
           curl -L https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz -o /tmp/zig.tar.xz
           mkdir -p /opt/zig
@@ -120,34 +159,33 @@ jobs:
           ! file target/${{ matrix.target }}/release/openrepo-sync | grep -q "dynamically linked"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: binary-${{ matrix.arch }}
           path: target/${{ matrix.target }}/release/openrepo-sync
           retention-days: 7
 
-  # ── 3. Package into .deb and .rpm ──────────────────────────────────────────
+  # ── 4. Package into .deb and .rpm ──────────────────────────────────────────
   package:
     name: Package · ${{ matrix.arch }}
     needs: [version, build]
-    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - arch:    amd64
+          - arch:     amd64
             rpm_arch: x86_64
-          - arch:    arm64
+          - arch:     arm64
             rpm_arch: aarch64
-          - arch:    armhf
+          - arch:     armhf
             rpm_arch: armv7hl
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
       - name: Download binary
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           name: binary-${{ matrix.arch }}
           path: dist/bin/
@@ -199,11 +237,8 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           ARCH:    ${{ matrix.rpm_arch }}
         run: |
-          # Staged outside ~/rpmbuild/BUILD on purpose: rpm 4.20+ builds each
-          # package under BUILD/<name>-<version>-build/ and nests BUILDROOT
-          # inside that same directory, so `cp -a $BUILDDIR/. $BUILDROOT/`
-          # would copy the tree into itself. A separate staging dir avoids
-          # the nesting entirely, independent of that internal layout.
+          # Stage outside ~/rpmbuild/BUILD to avoid the nested-BUILDROOT issue
+          # with rpm 4.20+ (BUILD/<name>-<version>-build/BUILDROOT would nest).
           STAGE="$HOME/rpm-stage"
           mkdir -p ~/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
@@ -242,10 +277,7 @@ jobs:
           - Automated release ${VERSION}
           EOF
 
-          # --target (not BuildArch:) is required for cross-arch packaging:
-          # rpm rejects a BuildArch that isn't in the host's compatible-arch
-          # table (e.g. x86_64 host building for aarch64/armv7hl), even
-          # though nothing here is actually compiled.
+          # --target (not BuildArch:) is required for cross-arch packaging.
           rpmbuild --target "${ARCH}-linux" \
                    --define "_topdir $HOME/rpmbuild" \
                    -bb ~/rpmbuild/SPECS/openrepo-sync.spec
@@ -255,7 +287,7 @@ jobs:
           echo "rpm_file=$(basename $RPM_FILE)" >> "$GITHUB_ENV"
 
       - name: Upload packages
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: packages-${{ matrix.arch }}
           path: |
@@ -263,23 +295,22 @@ jobs:
             *.rpm
           retention-days: 7
 
-  # ── 4. Create GitHub release and attach all packages ──────────────────────
+  # ── 5. Create GitHub release and attach all packages ──────────────────────
   release:
     name: Create release
     needs: [version, package]
-    if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
 
       - name: Download all packages
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@v4
         with:
           pattern: packages-*
           merge-multiple: true
@@ -296,7 +327,7 @@ jobs:
           git push origin "${{ needs.version.outputs.tag }}"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v2
         with:
           tag_name:   ${{ needs.version.outputs.tag }}
           name:       ${{ needs.version.outputs.tag }}

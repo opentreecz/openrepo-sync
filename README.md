@@ -1,7 +1,10 @@
 # openrepo-sync
 
 [![CI](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml)
+[![Release](https://github.com/opentreecz/openrepo-sync/actions/workflows/release.yml/badge.svg)](https://github.com/opentreecz/openrepo-sync/actions/workflows/release.yml)
 [![codecov](https://codecov.io/gh/opentreecz/openrepo-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/opentreecz/openrepo-sync)
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://opentreecz.github.io/openrepo-sync/coverage/)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/opentreecz/openrepo-sync/pkgs/container/openrepo-sync)
 
 A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources. It checks GitHub Releases, direct download URLs, and SourceForge for new package versions, uploads them to OpenRepo, and removes releases older than a configured threshold.
 

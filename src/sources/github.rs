@@ -162,7 +162,7 @@ impl GithubSource {
                 .filter(|a| {
                     self.asset_filter
                         .as_ref()
-                        .map_or(true, |p| p.matches(&a.name))
+                        .is_none_or(|p| p.matches(&a.name))
                 })
                 .collect();
 

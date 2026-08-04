@@ -2,6 +2,41 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+/// Deserializes a YAML field that may be either a single string or a sequence
+/// of strings into `Vec<String>`. Also accepts missing/null (returns empty vec).
+///
+/// YAML examples that all work:
+/// ```yaml
+/// arch_filter: amd64
+/// arch_filter: [amd64, arm64]
+/// arch_filter:
+///   - amd64
+///   - arm64
+/// ```
+fn deserialize_string_or_list<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrList {
+        Single(String),
+        List(Vec<String>),
+    }
+
+    let opt: Option<StringOrList> = Option::deserialize(deserializer)?;
+    Ok(match opt {
+        None => vec![],
+        Some(StringOrList::Single(s)) => vec![s],
+        Some(StringOrList::List(v)) => v,
+    })
+}
+
+/// Returns the default arch priority list: amd64 first, then arm64.
+fn default_arch_filter() -> Vec<String> {
+    vec!["amd64".to_string(), "arm64".to_string()]
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GlobalConfig {
     pub openrepo: OpenRepoConfig,
@@ -51,6 +86,16 @@ pub enum SourceConfig {
         asset_filter: Option<String>,
         #[serde(default)]
         prerelease: bool,
+        /// Ordered architecture preference list. The first entry that matches
+        /// an asset filename is selected. When a release has assets for multiple
+        /// architectures, this prevents accidentally downloading the wrong one.
+        /// Default: ["amd64", "arm64"]. Set to [] to disable arch filtering.
+        /// Accepts a single string or a list: `arch_filter: amd64`
+        #[serde(
+            default = "default_arch_filter",
+            deserialize_with = "deserialize_string_or_list"
+        )]
+        arch_filter: Vec<String>,
     },
     DirectUrl {
         url: String,
@@ -230,11 +275,73 @@ source:
         if let SourceConfig::Github {
             asset_filter,
             prerelease,
+            arch_filter,
             ..
         } = p.source
         {
             assert!(asset_filter.is_none());
             assert!(!prerelease);
+            assert_eq!(arch_filter, vec!["amd64", "arm64"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_github_explicit_arch_filter() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+  arch_filter: ["arm64", "amd64"]
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { arch_filter, .. } = p.source {
+            assert_eq!(arch_filter, vec!["arm64", "amd64"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_github_empty_arch_filter_disables_selection() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+  arch_filter: []
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { arch_filter, .. } = p.source {
+            assert!(arch_filter.is_empty());
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_github_arch_filter_single_string() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+  arch_filter: arm64
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { arch_filter, .. } = p.source {
+            assert_eq!(arch_filter, vec!["arm64"]);
         } else {
             panic!("wrong variant");
         }

@@ -161,8 +161,15 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
             repo,
             asset_filter,
             prerelease,
+            arch_filter,
         } => {
-            let source = GithubSource::new(owner, repo, asset_filter.as_deref(), *prerelease)?;
+            let source = GithubSource::new(
+                owner,
+                repo,
+                asset_filter.as_deref(),
+                *prerelease,
+                arch_filter.clone(),
+            )?;
             source.fetch_latest(project.keep_versions).await
         }
         SourceConfig::DirectUrl { url } => {

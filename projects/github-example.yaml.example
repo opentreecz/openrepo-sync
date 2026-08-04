@@ -20,3 +20,28 @@ source:
   repo: curl                # repository name
   asset_filter: "*.deb"    # optional glob; omit to keep every asset per release
   prerelease: false         # optional, default: false — include pre-releases?
+
+  # arch_filter — ordered architecture preference list (optional).
+  #
+  # When a GitHub release publishes assets for multiple architectures (e.g.
+  # both amd64 and arm64), openrepo-sync picks the first asset whose filename
+  # contains an entry from this list. Earlier entries have higher priority.
+  # If no entry matches any asset, the first candidate is used as a fallback
+  # so no release is silently dropped.
+  #
+  # Default: [amd64, arm64]
+  #   → amd64 packages are preferred automatically; no config needed for the
+  #     common case.
+  #
+  # To prefer arm64 but fall back to amd64 if arm64 is absent:
+  #   arch_filter: [arm64, amd64]
+  #
+  # Single-string shorthand (downloads only that architecture):
+  #   arch_filter: amd64
+  #
+  # To collect every matching asset regardless of architecture:
+  #   arch_filter: []
+  #
+  # amd64 / x86_64 / x86-64 are treated as aliases (any matches all three).
+  # arm64 / aarch64 are treated as aliases (any matches both spellings).
+  arch_filter: [amd64, arm64]   # default; explicit here for illustration

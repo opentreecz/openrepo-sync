@@ -1,0 +1,63 @@
+# Example project file — "deb_repo" source type.
+#
+# Mirrors packages from an external Debian (APT) repository into OpenRepo.
+# The source fetches the Packages index (Packages.gz or plain Packages) for
+# each combination of suite/component/architecture, filters by package name
+# and/or filename glob, and uploads the N newest versions.
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/deb-repo-example.yaml.example projects/nginx.yaml
+# Full field reference: docs/sources.md
+
+name: nginx                # identifier used in log output and --project NAME
+repo_uid: debian-stable    # target repository UID in OpenRepo
+keep_versions: 3           # keep the 3 newest versions; older ones are pruned
+on_conflict: skip          # skip, overwrite, or error (default) when package already exists
+
+source:
+  type: deb_repo
+  url: https://nginx.org/packages/debian    # Debian repository base URL
+
+  # Suite(s) to mirror. Accepts a single string or a list.
+  #   suites: bookworm
+  #   suites: [bookworm, bullseye]
+  # Default: bookworm
+  suites: bookworm
+
+  # Repository component(s). Accepts a single string or a list.
+  #   components: main
+  #   components: [main, contrib]
+  # Default: main
+  components: nginx
+
+  # Architecture(s) to mirror. Accepts a single string or a list.
+  #   architectures: amd64
+  #   architectures: [amd64, arm64]
+  # Default: amd64
+  architectures: [amd64, arm64]
+
+  # Exact Debian package name to sync (matches the Package: field in the index).
+  # Optional — omit to sync all packages found (subject to filename_filter).
+  package_filter: nginx
+
+  # Optional glob filter applied to the filename from the Packages index.
+  # Useful to select a specific package variant when package_filter alone is
+  # not precise enough.
+  # filename_filter: "nginx_*.deb"
+
+  # Verify the InRelease GPG signature before downloading any packages.
+  # Requires the `gpg` binary to be installed. Default: true.
+  verify_gpg: true
+
+  # GPG public key used for signature verification. Either:
+  #   - A URL (http:// or https://) — fetched at sync time
+  #   - An inline ASCII-armored key block
+  # Required when verify_gpg is true.
+  gpg_key: https://nginx.org/keys/nginx_signing.key
+
+  # Inline ASCII-armored key example (alternative to URL):
+  # gpg_key: |
+  #   -----BEGIN PGP PUBLIC KEY BLOCK-----
+  #   ...
+  #   -----END PGP PUBLIC KEY BLOCK-----

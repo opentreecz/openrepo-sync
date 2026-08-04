@@ -37,6 +37,22 @@ fn default_arch_filter() -> Vec<String> {
     vec!["amd64".to_string(), "arm64".to_string()]
 }
 
+fn default_deb_suites() -> Vec<String> {
+    vec!["bookworm".to_string()]
+}
+
+fn default_deb_components() -> Vec<String> {
+    vec!["main".to_string()]
+}
+
+fn default_deb_architectures() -> Vec<String> {
+    vec!["amd64".to_string()]
+}
+
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct GlobalConfig {
     pub openrepo: OpenRepoConfig,
@@ -109,6 +125,42 @@ pub enum SourceConfig {
         folder: Option<String>,
         #[serde(default)]
         filename_filter: Option<String>,
+    },
+    DebRepo {
+        url: String,
+        /// Debian suite(s) to fetch, e.g. "bookworm" or ["bookworm", "bullseye"].
+        #[serde(
+            default = "default_deb_suites",
+            deserialize_with = "deserialize_string_or_list"
+        )]
+        suites: Vec<String>,
+        /// Repository component(s), e.g. "main" or ["main", "contrib"].
+        #[serde(
+            default = "default_deb_components",
+            deserialize_with = "deserialize_string_or_list"
+        )]
+        components: Vec<String>,
+        /// Architecture(s) to mirror, e.g. "amd64" or ["amd64", "arm64"].
+        #[serde(
+            default = "default_deb_architectures",
+            deserialize_with = "deserialize_string_or_list"
+        )]
+        architectures: Vec<String>,
+        /// Exact Debian package name to sync (Package: field). Required unless
+        /// filename_filter is set.
+        #[serde(default)]
+        package_filter: Option<String>,
+        /// Optional glob filter applied to the Filename field in the Packages index.
+        #[serde(default)]
+        filename_filter: Option<String>,
+        /// Verify the repository's InRelease/Release GPG signature. Default: true.
+        #[serde(default = "default_true")]
+        verify_gpg: bool,
+        /// GPG public key for signature verification. Either an inline ASCII-armored
+        /// key or a URL (http/https) that will be fetched at sync time.
+        /// Required when verify_gpg is true.
+        #[serde(default)]
+        gpg_key: Option<String>,
     },
 }
 
@@ -342,6 +394,115 @@ source:
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         if let SourceConfig::Github { arch_filter, .. } = p.source {
             assert_eq!(arch_filter, vec!["arm64"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    // ── DebRepo deserialization ────────────────────────────────────────────
+
+    #[test]
+    fn project_config_deb_repo_defaults() {
+        let yaml = r#"
+name: nginx
+repo_uid: my-repo
+keep_versions: 3
+source:
+  type: deb_repo
+  url: "https://nginx.org/packages/debian"
+  package_filter: nginx
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::DebRepo {
+            url,
+            suites,
+            components,
+            architectures,
+            package_filter,
+            filename_filter,
+            verify_gpg,
+            gpg_key,
+        } = p.source
+        {
+            assert_eq!(url, "https://nginx.org/packages/debian");
+            assert_eq!(suites, vec!["bookworm"]);
+            assert_eq!(components, vec!["main"]);
+            assert_eq!(architectures, vec!["amd64"]);
+            assert_eq!(package_filter.as_deref(), Some("nginx"));
+            assert!(filename_filter.is_none());
+            assert!(verify_gpg);
+            assert!(gpg_key.is_none());
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_deb_repo_explicit_fields() {
+        let yaml = r#"
+name: nginx
+repo_uid: my-repo
+keep_versions: 2
+source:
+  type: deb_repo
+  url: "https://nginx.org/packages/debian"
+  suites: [bookworm, bullseye]
+  components: [main, nginx]
+  architectures: [amd64, arm64]
+  package_filter: nginx
+  filename_filter: "nginx_*.deb"
+  verify_gpg: false
+  gpg_key: "https://nginx.org/keys/nginx_signing.key"
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::DebRepo {
+            suites,
+            components,
+            architectures,
+            filename_filter,
+            verify_gpg,
+            gpg_key,
+            ..
+        } = p.source
+        {
+            assert_eq!(suites, vec!["bookworm", "bullseye"]);
+            assert_eq!(components, vec!["main", "nginx"]);
+            assert_eq!(architectures, vec!["amd64", "arm64"]);
+            assert_eq!(filename_filter.as_deref(), Some("nginx_*.deb"));
+            assert!(!verify_gpg);
+            assert_eq!(
+                gpg_key.as_deref(),
+                Some("https://nginx.org/keys/nginx_signing.key")
+            );
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_deb_repo_single_string_suites() {
+        let yaml = r#"
+name: nginx
+repo_uid: r
+keep_versions: 1
+source:
+  type: deb_repo
+  url: "https://example.com"
+  suites: bookworm
+  components: main
+  architectures: arm64
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::DebRepo {
+            suites,
+            components,
+            architectures,
+            ..
+        } = p.source
+        {
+            assert_eq!(suites, vec!["bookworm"]);
+            assert_eq!(components, vec!["main"]);
+            assert_eq!(architectures, vec!["arm64"]);
         } else {
             panic!("wrong variant");
         }

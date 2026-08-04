@@ -63,27 +63,27 @@ jobs:
           echo "tag=v$NEW"      >> "$GITHUB_OUTPUT"
           echo "skip=false"     >> "$GITHUB_OUTPUT"
 
-  # ── 2. Gate on CI passing for the version-bump commit ──────────────────────
-  # Wait for the CI workflow triggered by the version-bump push to complete
-  # before building artifacts. This prevents releasing a broken build.
+  # ── 2. Gate on CI passing for the triggering commit ───────────────────────
+  # The version job already ran only because a non-bump push landed on main.
+  # We still verify that the CI workflow for that same commit completed
+  # successfully before building release artifacts. Bot pushes (the bump
+  # commit itself) never have CI runs, so we check the original SHA, not HEAD.
   wait-ci:
     name: Wait for CI
     needs: version
     if: needs.version.outputs.skip != 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Wait for CI checks on the bump commit
+      - name: Wait for CI checks on the triggering commit
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Give CI a few seconds to register the new run before we start polling.
-          sleep 15
-
           REPO="${{ github.repository }}"
-          # The version-bump is the HEAD of main at this point.
-          COMMIT=$(git ls-remote https://github.com/$REPO refs/heads/main | cut -f1)
+          # github.sha is the commit that triggered this workflow run —
+          # i.e. the developer's commit, not the bot's version-bump commit.
+          COMMIT="${{ github.sha }}"
 
-          echo "Waiting for CI on commit $COMMIT …"
+          echo "Waiting for CI on commit ${COMMIT::8} …"
           for i in $(seq 1 40); do
             STATUS=$(gh api "repos/$REPO/commits/$COMMIT/check-runs" \
               --jq '[.check_runs[] | select(.name | test("Formatting|Clippy|Test"))]
@@ -94,11 +94,11 @@ jobs:
             echo "  attempt $i: $STATUS"
             if [ "$STATUS" = "success" ]; then exit 0; fi
             if [ "$STATUS" = "failure" ]; then
-              echo "CI failed — aborting release." >&2; exit 1
+              echo "CI failed on $COMMIT — aborting release." >&2; exit 1
             fi
             sleep 30
           done
-          echo "Timed out waiting for CI." >&2
+          echo "Timed out waiting for CI on $COMMIT." >&2
           exit 1
 
   # ── 3. Build fully static binaries for all target platforms ────────────────

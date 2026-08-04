@@ -40,14 +40,23 @@ The API key is available from your OpenRepo user profile (via `GET /api/whoami` 
 
 ## Per-Project Files (`projects/<name>.yaml`)
 
-Every project file requires four fields:
+Every project file requires `name`, `repo_uid`, `keep_versions`, and a `source` block; `on_conflict` is optional:
 
-| Field | Type | Description |
-|---|---|---|
-| `name` | string | Identifier used in log output and with `--project` |
-| `repo_uid` | string | Target OpenRepo repository identifier |
-| `keep_versions` | integer | Number of versions to retain; older ones are deleted |
-| `source` | object | Upstream source configuration (see [Source Types](../sources/)) |
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `name` | string | Yes | Identifier used in log output and with `--project` |
+| `repo_uid` | string | Yes | Target OpenRepo repository identifier |
+| `keep_versions` | integer | Yes | Number of versions to retain; older ones are deleted |
+| `on_conflict` | string | No | What to do when the uploaded package already exists in the repository: `error` (default), `skip`, or `overwrite` |
+| `source` | object | Yes | Upstream source configuration (see [Source Types](../sources/)) |
+
+### `on_conflict`
+
+| Value | Behaviour when OpenRepo rejects an upload as a duplicate |
+|---|---|
+| `error` | The project fails and the process exits `1` (default) |
+| `skip` | The package is logged as skipped and the sync continues |
+| `overwrite` | The upload is sent with the overwrite flag, replacing the existing package |
 
 ### Example
 
@@ -55,6 +64,7 @@ Every project file requires four fields:
 name: curl
 repo_uid: debian-stable
 keep_versions: 3
+on_conflict: skip
 source:
   type: github
   owner: curl

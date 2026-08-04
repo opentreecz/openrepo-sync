@@ -3,8 +3,8 @@ openrepo-sync
 
 A command-line tool that keeps a self-hosted OpenRepo package repository in sync
 with upstream software sources.  It checks GitHub Releases, direct download URLs,
-and SourceForge for new package versions, uploads them to OpenRepo, and removes
-releases older than a configured threshold.
+SourceForge, and external Debian (APT) repositories for new package versions,
+uploads them to OpenRepo, and removes releases older than a configured threshold.
 
 
 QUICK START
@@ -68,10 +68,13 @@ Per-project files (projects/<name>.yaml)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Every project file must contain: name, repo_uid, keep_versions, and a source block.
+on_conflict is optional.
 
   name        Identifier used in log output and with --project.
   repo_uid    The repo_uid of the target OpenRepo repository.
   keep_versions  Maximum number of releases to retain; older ones are deleted.
+  on_conflict What to do when a package already exists in the repository:
+              error (default), skip, or overwrite.
   source      Upstream source configuration (see Source Types below).
 
 
@@ -88,9 +91,15 @@ Fetches release assets from the GitHub Releases API.
     repo: curl               # repository name
     asset_filter: "*.deb"    # optional glob; keep all assets when omitted
     prerelease: false        # optional; include pre-releases? default: false
+    arch_filter: [amd64, arm64]  # optional; ordered architecture preference
 
 Version is taken from the release tag_name (e.g. "v8.5.0" → 8.5.0).
 Draft releases are always skipped.
+arch_filter picks one asset per release: the first asset whose filename matches
+the earliest list entry wins (amd64/x86_64 and arm64/aarch64 are aliases).  If
+nothing matches, the first candidate is used as a fallback.  A single string is
+accepted ("arch_filter: amd64"); an empty list ([]) disables the selection and
+keeps every asset that passes asset_filter.  Default: [amd64, arm64].
 The GITHUB_TOKEN environment variable is not currently used; unauthenticated
 requests are subject to GitHub's 60 req/hour rate limit per IP.
 
@@ -133,6 +142,35 @@ Scrapes the SourceForge file listing page to discover release files.
     filename_filter: "*.deb"      # optional glob filter on filenames
 
 Files are sorted by detected version number, newest first.
+
+
+deb_repo
+~~~~~~~~
+Mirrors packages from an external Debian (APT) repository.  Fetches the
+Packages index (Packages.gz, falling back to plain Packages) for each
+suite/component/architecture combination, filters by package name and/or
+filename glob, and uploads the newest versions.
+
+  source:
+    type: deb_repo
+    url: https://nginx.org/packages/debian   # repository base URL
+    suites: bookworm              # string or list; default: bookworm
+    components: nginx             # string or list; default: main
+    architectures: [amd64, arm64] # string or list; default: amd64
+    package_filter: nginx         # exact Package: name to sync (optional)
+    # filename_filter: "nginx_*.deb"  # optional glob on the index filename
+    verify_gpg: true              # default: true
+    gpg_key: https://nginx.org/keys/nginx_signing.key
+
+Every suites x components x architectures combination is fetched and merged;
+duplicate filenames (e.g. arch:all packages) are collapsed, and the newest
+keep_versions entries are kept.
+
+With verify_gpg: true (the default) the suite's InRelease file is verified
+against gpg_key — either an http(s):// URL fetched at sync time or an inline
+ASCII-armored key block — using the system gpg binary.  Set verify_gpg: false
+for unsigned repositories.  Requires gpg to be installed (package: gpg on
+Debian/Ubuntu, gnupg2 on RHEL/Fedora).
 
 
 COMMAND-LINE REFERENCE
@@ -185,12 +223,16 @@ For each project the following steps are performed in order:
   1. Call GET /api/whoami to verify authentication (once per run, on startup).
   2. Fetch the latest N releases from the upstream source (N = keep_versions).
   3. Call the OpenRepo packages endpoint to list what is currently in the repo.
-  4. Diff by filename: identify remote packages not yet present in the repo.
+  4. Diff by filename and version: a package is uploaded only if neither its
+     filename nor its detected version is already present in the repo
+     (packages with no detectable version are compared by filename alone).
   5. For each missing package:
        a. Download to a temporary directory (or, for direct_url_latest, the file
           was already downloaded during version detection).
        b. Upload to POST /api/<repo_uid>/upload/ as a multipart form.
        c. Delete the local temporary file.
+     If OpenRepo rejects the upload as a duplicate, the project's on_conflict
+     policy decides: error (default), skip, or overwrite.
   6. Re-fetch the repo package list (skipped in --dry-run mode).
   7. Sort packages descending by version; delete any beyond keep_versions.
 

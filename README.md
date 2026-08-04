@@ -6,13 +6,16 @@
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://opentreecz.github.io/openrepo-sync/coverage/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/opentreecz/openrepo-sync/pkgs/container/openrepo-sync)
 
-A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources. It checks GitHub Releases, direct download URLs, and SourceForge for new package versions, uploads them to OpenRepo, and removes releases older than a configured threshold.
+A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources. It checks GitHub Releases, direct download URLs, SourceForge, and external Debian (APT) repositories for new package versions, uploads them to OpenRepo, and removes releases older than a configured threshold.
 
 ## Features
 
-- Tracks multiple upstream sources per project: GitHub Releases, direct URLs, SourceForge
+- Tracks multiple upstream sources per project: GitHub Releases, direct URLs, SourceForge, Debian (APT) repositories
 - Supports packages where the download URL contains no version — uses `dpkg-deb` or `rpm` to extract the real version from the package metadata
+- Architecture preference for GitHub releases: picks the right asset per release (`amd64` preferred by default, configurable via `arch_filter`)
+- Mirrors external Debian repositories (`deb_repo` source) with `InRelease` GPG signature verification
 - Configurable retention: keep the N newest releases, auto-prune the rest
+- Per-project conflict policy: `on_conflict: error | skip | overwrite` for packages already in the repository
 - Dry-run mode: preview all actions without modifying the repository
 - Per-project YAML config files — easy to add, remove, or disable individual packages
 - `${ENV_VAR}` expansion in config values for safe API key handling
@@ -24,6 +27,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openk
 - A running [OpenRepo](https://github.com/openkilt/openrepo) instance
 - `dpkg-deb` (package: `dpkg`) — required only for `direct_url_latest` with `.deb` packages
 - `rpm` — required only for `direct_url_latest` with `.rpm` packages
+- `gpg` — required only for `deb_repo` sources with GPG verification enabled (the default)
 
 ## Installation
 

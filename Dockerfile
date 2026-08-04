@@ -17,11 +17,13 @@ LABEL org.opencontainers.image.title="openrepo-sync" \
 #   ca-certificates  — HTTPS downloads
 #   dpkg             — dpkg-deb for direct_url_latest .deb version detection
 #   rpm              — rpm -qp  for direct_url_latest .rpm version detection
+#   gpg              — InRelease signature verification for deb_repo sources
 RUN apt-get update -qq \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
       dpkg \
       rpm \
+      gpg \
  && rm -rf /var/lib/apt/lists/*
 
 # Map Docker's TARGETARCH (arm for linux/arm/v7) to the Debian package arch name.

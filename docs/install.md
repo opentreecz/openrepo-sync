@@ -12,6 +12,7 @@ permalink: /install/
 - A running [OpenRepo](https://github.com/openkilt/openrepo) instance
 - `dpkg-deb` (package: `dpkg`) — only required for `direct_url_latest` with `.deb` packages
 - `rpm` — only required for `direct_url_latest` with `.rpm` packages
+- `gpg` — only required for `deb_repo` sources with GPG verification enabled (the default)
 
 ---
 

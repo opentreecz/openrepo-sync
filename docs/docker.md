@@ -86,6 +86,7 @@ Repeat for as many packages as you want to track — one YAML file per package. 
 | `direct-url-example.yaml.example` | `direct_url` | Fixed URL, filename already contains the version |
 | `direct-url-latest-example.yaml.example` | `direct_url_latest` | Fixed "LATEST" URL, version only in package metadata |
 | `sourceforge-example.yaml.example` | `sourceforge` | Upstream publishes via SourceForge file releases |
+| `deb-repo-example.yaml.example` | `deb_repo` | Mirroring packages from an external Debian (APT) repository |
 
 ### 6. Pull the image
 
@@ -244,7 +245,7 @@ docker run --rm \
 ## Image Details
 
 - **Base image:** `debian:bookworm-slim`
-- **Runtime packages:** `ca-certificates`, `dpkg`, `rpm`
+- **Runtime packages:** `ca-certificates`, `dpkg`, `rpm`, `gpg` (for `deb_repo` signature verification)
 - **Runs as:** non-root system user `openrepo`
 - **Entrypoint:** `/usr/bin/openrepo-sync`
 - **Default CMD:** `--help`

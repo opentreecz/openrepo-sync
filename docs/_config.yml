@@ -1,8 +1,10 @@
 theme: minima
 title: openrepo-sync
 description: Sync packages from upstream sources into a self-hosted OpenRepo repository
-url: ""
-repository: ""
+url: "https://opentreecz.github.io"
+baseurl: "/openrepo-sync"
+repository: "opentreecz/openrepo-sync"
+github_username: opentreecz
 
 plugins:
   - jekyll-seo-tag

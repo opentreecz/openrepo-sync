@@ -6,41 +6,48 @@ permalink: /sources/
 
 # Source Types
 
-Each project's `source` block specifies where to look for new package versions.
+Each project's `source` block specifies where to look for new package versions. The `type` field selects which source driver to use.
 
 ---
 
-## `github` — GitHub Releases
+## `github` — GitHub Releases {#github}
 
 Fetches release assets via the [GitHub Releases API](https://docs.github.com/en/rest/releases/releases).
 
 ```yaml
 source:
   type: github
-  owner: curl              # GitHub organisation or user
-  repo: curl               # repository name
-  asset_filter: "*.deb"   # optional glob; omit to keep all assets per release
-  prerelease: false        # optional, default: false
-  arch_filter: [amd64, arm64]  # optional; ordered architecture preference
+  owner: curl               # GitHub organisation or user
+  repo: curl                # repository name
+  asset_filter: "*.deb"    # optional glob; omit to keep all assets per release
+  prerelease: false         # default: false — include pre-releases?
+  arch_filter: [amd64, arm64]  # see below
 ```
+
+### `arch_filter`
+
+When a release publishes assets for multiple architectures (e.g. both `tool_amd64.deb` and `tool_arm64.deb`), `arch_filter` selects the single best-matching asset per release. The list is an ordered preference — the first entry that matches an asset filename wins.
+
+| Setting | Behaviour |
+|---|---|
+| `arch_filter: [amd64, arm64]` | Prefer amd64, fall back to arm64 **(default)** |
+| `arch_filter: [arm64, amd64]` | Prefer arm64 instead |
+| `arch_filter: amd64` | Single-string shorthand — download only amd64 |
+| `arch_filter: []` | Disable arch filtering — keep all matching assets |
+
+**Aliases:** `amd64`, `x86_64`, and `x86-64` are treated as equivalent. `arm64` and `aarch64` are treated as equivalent. Specifying any one of an alias group matches assets named with any spelling in that group.
+
+If no asset filename matches any arch entry, the first candidate is used as a fallback so no release is silently dropped.
 
 ### Fields
 
-| Field | Required | Description |
-|---|---|---|
-| `owner` | Yes | GitHub organisation or username |
-| `repo` | Yes | Repository name |
-| `asset_filter` | No | Glob pattern to filter release assets (e.g. `"*_amd64.deb"`) |
-| `prerelease` | No | Include pre-release versions. Default: `false` |
-| `arch_filter` | No | Ordered architecture preference list. Default: `[amd64, arm64]` |
-
-### Architecture selection (`arch_filter`)
-
-When a release publishes assets for several architectures, `arch_filter` picks **one asset per release**: the first asset whose filename matches the earliest entry in the list wins. If no entry matches any asset, the first candidate is used as a fallback so the release is not silently dropped.
-
-- Accepts a single string (`arch_filter: amd64`) or a list (`arch_filter: [arm64, amd64]`)
-- `amd64` / `x86_64` / `x86-64` are treated as aliases; so are `arm64` / `aarch64`
-- Set `arch_filter: []` to disable selection and collect every asset that passes `asset_filter` (the pre-0.1.14 behaviour)
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `owner` | Yes | — | GitHub organisation or username |
+| `repo` | Yes | — | Repository name |
+| `asset_filter` | No | (all assets) | Glob pattern to filter release assets |
+| `prerelease` | No | `false` | Include pre-release versions |
+| `arch_filter` | No | `[amd64, arm64]` | Architecture preference list |
 
 ### Behaviour
 
@@ -51,7 +58,80 @@ When a release publishes assets for several architectures, `arch_filter` picks *
 
 ---
 
-## `direct_url` — Static URL
+## `deb_repo` — Debian APT Repository {#deb_repo}
+
+Mirrors packages from any standard Debian (APT) repository by fetching and parsing the `Packages.gz` (or plain `Packages`) index.
+
+```yaml
+source:
+  type: deb_repo
+  url: https://nginx.org/packages/debian   # repository base URL
+
+  # Suite(s) to mirror. Single string or list.
+  suites: bookworm                  # default: bookworm
+
+  # Component(s). Single string or list.
+  components: nginx                 # default: main
+
+  # Architecture(s). Single string or list.
+  architectures: [amd64, arm64]    # default: amd64
+
+  # Filter by exact Debian package name (Package: field). Optional.
+  package_filter: nginx
+
+  # Filter by filename glob (applied to the Filename basename). Optional.
+  filename_filter: "nginx_*.deb"
+
+  # Verify the InRelease/Release GPG signature. Default: true.
+  verify_gpg: true
+
+  # GPG public key — URL or inline ASCII-armored key block.
+  gpg_key: https://nginx.org/keys/nginx_signing.key
+```
+
+### Multiple suites and architectures
+
+All combinations of `suites × components × architectures` are fetched. Results are deduplicated by filename and sorted newest-first before truncation to `keep_versions`.
+
+```yaml
+suites: [bookworm, bullseye]
+components: [main, contrib]
+architectures: [amd64, arm64]
+# → fetches 2 × 2 × 2 = 8 Packages indexes
+```
+
+### GPG verification
+
+When `verify_gpg: true`, the `InRelease` file is fetched and verified using the `gpg` CLI. The key can be supplied as:
+
+- A URL (`http://` or `https://`) — fetched at sync time
+- An inline ASCII-armored key block:
+
+```yaml
+gpg_key: |
+  -----BEGIN PGP PUBLIC KEY BLOCK-----
+  ...
+  -----END PGP PUBLIC KEY BLOCK-----
+```
+
+Requires `gpg` to be installed on the host (or in the container). Set `verify_gpg: false` to skip signature verification.
+
+### Fields
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `url` | Yes | — | Repository base URL |
+| `suites` | No | `[bookworm]` | Suite(s) — single string or list |
+| `components` | No | `[main]` | Component(s) — single string or list |
+| `architectures` | No | `[amd64]` | Architecture(s) — single string or list |
+| `package_filter` | No | (all packages) | Exact `Package:` field match |
+| `filename_filter` | No | (all files) | Glob applied to the filename basename |
+| `verify_gpg` | No | `true` | Verify InRelease GPG signature |
+| `gpg_key` | No | — | GPG key URL or inline ASCII-armored key |
+
+---
+
+## `direct_url` — Static URL {#direct_url}
 
 A fixed URL where the filename already contains the version string.
 
@@ -61,19 +141,27 @@ source:
   url: "https://example.com/releases/mypkg-2.1.0.deb"
 ```
 
+### Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | Yes | Full URL to the package file |
+
 ### Behaviour
 
 Version is extracted from the filename by regex, matching patterns such as:
 
-- `name-1.2.3.deb`
-- `name_1.2.3_amd64.deb`
-- `name-v1.2.3-rc1.tar.gz`
+- `name-1.2.3.deb` → `1.2.3`
+- `name_1.2.3_amd64.deb` → `1.2.3`
+- `name-v1.2.3-rc1.tar.gz` → `1.2.3-rc1`
+
+Strings that do not match a semver pattern are stored as a raw version string.
 
 ---
 
-## `direct_url_latest` — URL with no version in the filename
+## `direct_url_latest` — URL with version in package metadata {#direct_url_latest}
 
-For sources that publish under a fixed URL (e.g. `mypkg-LATEST.deb`) where the filename contains no version. The file is downloaded first; then `dpkg-deb` (`.deb`) or `rpm -qp` (`.rpm`) reads the version from the package metadata. The file is renamed to include the version before upload.
+For sources that publish at a fixed URL (e.g. `mypkg-LATEST.deb`) where the filename contains no version. The file is downloaded first; then `dpkg-deb` (`.deb`) or `rpm -qp` (`.rpm`) reads the version from the package metadata. The file is renamed to include the version before upload.
 
 ```yaml
 source:
@@ -81,12 +169,18 @@ source:
   url: "https://example.com/releases/mypkg-LATEST.deb"
 ```
 
+### Fields
+
+| Field | Required | Description |
+|---|---|---|
+| `url` | Yes | URL to the always-current package file |
+
 ### Behaviour
 
-- The package is downloaded to a staging directory
-- Version is extracted from package metadata using system tools
-- The file is renamed: `mypkg-LATEST.deb` → `mypkg-2.1.0.deb`
-- The renamed file is then uploaded to OpenRepo
+1. The package is downloaded to a staging directory
+2. Version is extracted from package metadata using `dpkg-deb` or `rpm -qp`
+3. The file is renamed: `mypkg-LATEST.deb` → `mypkg-2.1.0.deb`
+4. The renamed file is uploaded to OpenRepo
 
 ### Requirements
 
@@ -97,7 +191,7 @@ source:
 
 ---
 
-## `sourceforge` — SourceForge
+## `sourceforge` — SourceForge File Releases {#sourceforge}
 
 Scrapes the SourceForge file listing page to discover releases.
 
@@ -122,52 +216,28 @@ source:
 - Fetches `https://sourceforge.net/projects/{project}/files/{folder}/`
 - Parses the HTML file listing table
 - Files are sorted by detected version number, newest first
+- `keep_versions` newest results are returned
 
 ---
 
-## `deb_repo` — Debian (APT) repository
+## Common Fields (all source types)
 
-Mirrors packages from an external Debian repository into OpenRepo. The source fetches the `Packages` index (`Packages.gz`, falling back to plain `Packages`) for each suite/component/architecture combination, filters by package name and/or filename, and uploads the newest versions.
+These fields appear at the project level, not inside `source`:
 
 ```yaml
+name: my-package          # log output identifier and --project NAME
+repo_uid: debian-stable   # target OpenRepo repository UID
+keep_versions: 3          # keep 3 newest versions; older ones are pruned
+on_conflict: skip         # skip | overwrite | error (default)
+
 source:
-  type: deb_repo
-  url: https://nginx.org/packages/debian   # repository base URL
-  suites: bookworm                         # string or list; default: bookworm
-  components: nginx                        # string or list; default: main
-  architectures: [amd64, arm64]            # string or list; default: amd64
-  package_filter: nginx                    # exact Package: name to sync
-  # filename_filter: "nginx_*.deb"        # optional glob on the index filename
-  verify_gpg: true                         # default: true
-  gpg_key: https://nginx.org/keys/nginx_signing.key
+  type: ...
 ```
 
-### Fields
+### `on_conflict`
 
-| Field | Required | Description |
-|---|---|---|
-| `url` | Yes | Base URL of the Debian repository (the part before `/dists/…`) |
-| `suites` | No | Suite(s) to mirror, e.g. `bookworm`. String or list. Default: `bookworm` |
-| `components` | No | Component(s), e.g. `main`. String or list. Default: `main` |
-| `architectures` | No | Architecture(s), e.g. `amd64`. String or list. Default: `amd64` |
-| `package_filter` | No | Exact package name (the `Package:` field in the index) |
-| `filename_filter` | No | Glob applied to the basename of the `Filename:` field |
-| `verify_gpg` | No | Verify the suite's `InRelease` signature before fetching. Default: `true` |
-| `gpg_key` | When `verify_gpg` | GPG public key: an `http(s)://` URL fetched at sync time, or an inline ASCII-armored key block |
-
-### Behaviour
-
-- Every `suites` × `components` × `architectures` combination is fetched and merged
-- Duplicate filenames across combinations (e.g. `Architecture: all` packages) are collapsed
-- Results are sorted newest-first by version and truncated to `keep_versions`
-- The download URL is built from the repository base URL plus the index's `Filename:` field
-
-### GPG verification
-
-With `verify_gpg: true` (the default), the suite's `InRelease` file is verified against `gpg_key` using the system `gpg` binary before any package index is trusted. If `verify_gpg` is `true` but no `gpg_key` is configured, verification is skipped with a debug notice — set an explicit `verify_gpg: false` if the repository is unsigned.
-
-### Requirements
-
-| Condition | System tool required |
+| Value | Behaviour |
 |---|---|
-| `verify_gpg: true` (default) | `gpg` (package: `gpg` on Debian/Ubuntu, `gnupg2` on RHEL/Fedora) |
+| `error` | Return an error if the package already exists **(default)** |
+| `skip` | Silently skip upload if the package already exists |
+| `overwrite` | Replace the existing package |

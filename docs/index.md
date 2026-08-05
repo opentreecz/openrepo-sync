@@ -7,20 +7,19 @@ title: openrepo-sync
 
 A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources.
 
-**openrepo-sync** checks GitHub Releases, direct download URLs, SourceForge, and external Debian (APT) repositories for new package versions, uploads them to OpenRepo, and removes releases older than a configured threshold.
+**openrepo-sync** fetches new package versions from GitHub Releases, external Debian APT repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
 
 ---
 
 ## Features
 
-- **Multiple upstream sources** — GitHub Releases, direct URLs (static or LATEST), SourceForge, Debian (APT) repositories
-- **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself
-- **Architecture preference** — picks the right release asset per architecture (`amd64` preferred by default, configurable via `arch_filter`)
-- **APT repository mirroring** — syncs from external Debian repositories with `InRelease` GPG signature verification
+- **5 upstream source types** — GitHub Releases, Debian APT repositories, static URLs, LATEST URLs, SourceForge
+- **Architecture-aware GitHub downloads** — `arch_filter` selects the correct asset when a release publishes multiple architecture variants; `amd64`/`x86_64`/`x86-64` and `arm64`/`aarch64` are treated as aliases
+- **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages` index, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
+- **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
 - **Configurable retention** — keep the N newest releases, auto-prune the rest
-- **Conflict policy** — per-project `on_conflict: error | skip | overwrite` for packages already in the repository
 - **Dry-run mode** — preview all actions without touching the repository
-- **Per-project YAML files** — easy to add, remove, or disable individual packages
+- **Per-project YAML files** — one file per tracked package; easy to add, remove, or disable
 - **`${ENV_VAR}` expansion** in config values for safe API key handling
 - **Structured logging** — quiet by default, full debug via `--verbose` or `RUST_LOG`
 - **Multi-platform Docker image** — `linux/amd64`, `linux/arm64`, `linux/arm/v7`
@@ -34,20 +33,13 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openk
 cp config.yaml.example config.yaml
 $EDITOR config.yaml
 
-# 2. Add a project
+# 2. Add a project (pick the template for your source type)
 mkdir -p projects/
-cat > projects/curl.yaml <<EOF
-name: curl
-repo_uid: debian-stable
-keep_versions: 3
-source:
-  type: github
-  owner: curl
-  repo: curl
-  asset_filter: "*.deb"
-EOF
+cp projects/github-example.yaml.example   projects/curl.yaml
+cp projects/deb-repo-example.yaml.example projects/nginx.yaml
+$EDITOR projects/curl.yaml
 
-# 3. Dry run
+# 3. Dry run — preview without writing anything
 openrepo-sync --dry-run
 
 # 4. Sync
@@ -56,14 +48,26 @@ openrepo-sync
 
 ---
 
+## Source Types at a Glance
+
+| Type | Description |
+|---|---|
+| [`github`](sources/#github) | GitHub Releases API — picks correct arch asset automatically |
+| [`deb_repo`](sources/#deb_repo) | Debian APT repository (Packages.gz index) |
+| [`direct_url`](sources/#direct_url) | Fixed URL with version in the filename |
+| [`direct_url_latest`](sources/#direct_url_latest) | Fixed URL, version extracted from package metadata |
+| [`sourceforge`](sources/#sourceforge) | SourceForge file releases |
+
+---
+
 ## Navigation
 
 | Page | Description |
 |---|---|
-| [Installation](install/) | Build from source, install binary and man page |
+| [Installation](install/) | Binary packages, build from source, Docker |
 | [Configuration](configuration/) | Global config and per-project YAML schema |
+| [Source Types](sources/) | All 5 source types with full field reference and examples |
 | [Usage](usage/) | CLI reference, examples, logging and debugging |
-| [Source Types](sources/) | GitHub, direct URL, LATEST URL, SourceForge, Debian APT repo |
+| [Docker](docker/) | Multi-platform container — setup, scheduling, troubleshooting |
 | [API Reference](api/) | OpenRepo REST API endpoints used by this tool |
-| [Docker](docker/) | Multi-platform container image |
 | [Coverage](coverage/) | Test coverage report and CI integration |

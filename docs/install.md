@@ -8,36 +8,55 @@ permalink: /install/
 
 ## Requirements
 
-- Rust 1.70 or newer (build only — not needed at runtime)
-- A running [OpenRepo](https://github.com/openkilt/openrepo) instance
-- `dpkg-deb` (package: `dpkg`) — only required for `direct_url_latest` with `.deb` packages
-- `rpm` — only required for `direct_url_latest` with `.rpm` packages
-- `gpg` — only required for `deb_repo` sources with GPG verification enabled (the default)
+| Requirement | When needed |
+|---|---|
+| A running [OpenRepo](https://github.com/openkilt/openrepo) instance | Always |
+| `dpkg-deb` (package: `dpkg`) | `direct_url_latest` with `.deb` packages |
+| `rpm` (package: `rpm`) | `direct_url_latest` with `.rpm` packages |
+| `gpg` | `deb_repo` with `verify_gpg: true` |
+
+Rust is only needed to build from source — not at runtime.
 
 ---
 
 ## From a Release Package
 
-Download the `.deb` or `.rpm` for your platform from the [latest release](https://github.com/{{ site.github_username }}/openrepo-sync/releases/latest).
+Download the `.deb` or `.rpm` for your platform from the [latest release](https://github.com/opentreecz/openrepo-sync/releases/latest).
 
 ### Debian / Ubuntu
 
 ```sh
-sudo dpkg -i openrepo-sync_0.1.0_amd64.deb
+# amd64 (x86-64)
+sudo dpkg -i openrepo-sync_*_amd64.deb
+
+# ARM 64-bit
+sudo dpkg -i openrepo-sync_*_arm64.deb
+
+# ARM hard-float (armhf)
+sudo dpkg -i openrepo-sync_*_armhf.deb
 ```
 
 ### RHEL / Fedora
 
 ```sh
-sudo rpm -i openrepo-sync-0.1.0-1.x86_64.rpm
+# x86_64
+sudo rpm -i openrepo-sync-*-1.x86_64.rpm
+
+# aarch64
+sudo rpm -i openrepo-sync-*-1.aarch64.rpm
+
+# armv7hl
+sudo rpm -i openrepo-sync-*-1.armv7hl.rpm
 ```
 
 ---
 
 ## From Source
 
+Requires Rust 1.70 or newer.
+
 ```sh
-git clone https://github.com/{{ site.github_username }}/openrepo-sync
+git clone https://github.com/opentreecz/openrepo-sync
 cd openrepo-sync
 cargo build --release
 install -m755 target/release/openrepo-sync /usr/local/bin/
@@ -56,7 +75,18 @@ man openrepo-sync
 ## Docker
 
 ```sh
-docker pull ghcr.io/{{ site.github_username }}/openrepo-sync:latest
+docker pull ghcr.io/opentreecz/openrepo-sync:latest
 ```
 
-See [Docker](../docker/) for full usage.
+Supported platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`.
+
+See [Docker](../docker/) for the full setup walkthrough.
+
+---
+
+## Verify the installation
+
+```sh
+openrepo-sync --version
+openrepo-sync --help
+```

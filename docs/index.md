@@ -5,7 +5,7 @@ title: openrepo-sync
 
 # openrepo-sync
 
-A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources.
+A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources.
 
 **openrepo-sync** fetches new package versions from GitHub Releases, external Debian APT repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
 

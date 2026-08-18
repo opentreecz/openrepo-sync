@@ -315,4 +315,4 @@ SEE ALSO
   openrepo-sync --help
   man openrepo-sync
   dpkg-deb(1), rpm(8)
-  https://github.com/openkilt/openrepo
+  https://github.com/opentreecz/openrepo

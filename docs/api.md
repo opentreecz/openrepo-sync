@@ -8,7 +8,7 @@ permalink: /api/
 
 This page documents the OpenRepo REST API as used by `openrepo-sync`. The API is built on [Django REST Framework](https://www.django-rest-framework.org/) and serves both the OpenRepo web frontend and CLI clients.
 
-> **Source:** [github.com/openkilt/openrepo](https://github.com/openkilt/openrepo) — verified from `web/repo/api/urls.py`, `views.py`, `serializers.py`, and `cli/openrepo_cli/rest_interface.py`.
+> **Source:** [github.com/opentreecz/openrepo](https://github.com/opentreecz/openrepo) — verified from `web/repo/api/urls.py`, `views.py`, `serializers.py`, and `cli/openrepo_cli/rest_interface.py`.
 
 ---
 

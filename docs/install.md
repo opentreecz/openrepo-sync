@@ -10,7 +10,7 @@ permalink: /install/
 
 | Requirement | When needed |
 |---|---|
-| A running [OpenRepo](https://github.com/openkilt/openrepo) instance | Always |
+| A running [OpenRepo](https://github.com/opentreecz/openrepo) instance | Always |
 | `dpkg-deb` (package: `dpkg`) | `direct_url_latest` with `.deb` packages |
 | `rpm` (package: `rpm`) | `direct_url_latest` with `.rpm` packages |
 | `gpg` | `deb_repo` with `verify_gpg: true` |

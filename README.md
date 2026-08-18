@@ -6,7 +6,7 @@
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://opentreecz.github.io/openrepo-sync/coverage/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/opentreecz/openrepo-sync/pkgs/container/openrepo-sync)
 
-A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/openkilt/openrepo) package repository in sync with upstream software sources. It fetches new package versions from GitHub Releases, external Debian (APT) repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
+A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources. It fetches new package versions from GitHub Releases, external Debian (APT) repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
 
 **[Full documentation → opentreecz.github.io/openrepo-sync](https://opentreecz.github.io/openrepo-sync/)**
 
@@ -222,7 +222,7 @@ Options:
 
 | Requirement | When needed |
 |---|---|
-| A running [OpenRepo](https://github.com/openkilt/openrepo) instance | Always |
+| A running [OpenRepo](https://github.com/opentreecz/openrepo) instance | Always |
 | `dpkg-deb` (package: `dpkg`) | `direct_url_latest` with `.deb` packages |
 | `rpm` | `direct_url_latest` with `.rpm` packages |
 | `gpg` | `deb_repo` with `verify_gpg: true` |

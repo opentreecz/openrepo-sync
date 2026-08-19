@@ -1,3 +1,9 @@
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="docs/assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # Contributing to openrepo-sync
 
 Thank you for your interest in contributing! This guide covers everything you

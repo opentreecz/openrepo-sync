@@ -6,6 +6,9 @@ baseurl: "/openrepo-sync"
 repository: "opentreecz/openrepo-sync"
 github_username: opentreecz
 
+# Organization logo displayed in the site header (minima theme)
+logo: "/openrepo-sync/assets/logo.png"
+
 plugins:
   - jekyll-seo-tag
 

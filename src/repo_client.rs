@@ -10,6 +10,11 @@ use tracing::{debug, warn};
 use crate::models::{PackageVersion, RepoPackage};
 use crate::version::extract_version_from_filename;
 
+/// Maximum number of poll attempts when waiting for an async upload task to
+/// complete on the server.  Each attempt sleeps [`POLL_INTERVAL`].
+const UPLOAD_POLL_MAX_ATTEMPTS: u32 = 150; // 150 × 2 s = 5 minutes
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
 pub struct RepoClient {
     base_url: String,
     api_key: String,
@@ -19,6 +24,18 @@ pub struct RepoClient {
 #[derive(Debug, Deserialize)]
 struct UserResponse {
     username: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadResponse {
+    task_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadStatusResponse {
+    status: String,
+    #[serde(default)]
+    error_message: String,
 }
 
 #[allow(dead_code)]
@@ -75,7 +92,7 @@ impl RepoClient {
     pub async fn list_packages(&self, repo_uid: &str) -> Result<Vec<RepoPackage>> {
         let mut packages = Vec::new();
         let mut page_url = Some(format!(
-            "{}/api/repos/{}/packages/",
+            "{}/api/{}/packages/",
             self.base_url, repo_uid
         ));
 
@@ -90,11 +107,11 @@ impl RepoClient {
                 .context("Failed to list packages")?;
 
             if resp.status() == StatusCode::NOT_FOUND {
-                debug!(
-                    "Packages endpoint returned 404 for repo '{}' — repo may be empty or endpoint path differs",
+                bail!(
+                    "Package listing failed for repo '{}': server returned 404. \
+                     Verify the repo_uid exists on the server.",
                     repo_uid
                 );
-                break;
             }
 
             if !resp.status().is_success() {
@@ -166,7 +183,7 @@ impl RepoClient {
             .await
             .with_context(|| format!("Failed to read file for upload: {}", path.display()))?;
 
-        let file_part = Part::bytes(bytes).file_name(filename);
+        let file_part = Part::bytes(bytes).file_name(filename.clone());
         let mut form = Form::new().part("package_file", file_part);
         if overwrite {
             form = form.text("overwrite", "1");
@@ -181,12 +198,97 @@ impl RepoClient {
             .await
             .context("Upload request failed")?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
+        let status = resp.status();
+
+        if !status.is_success() && status != StatusCode::ACCEPTED {
             let body = resp.text().await.unwrap_or_default();
             bail!("Upload failed ({}): {}", status, body);
         }
+
+        // Server returns 202 Accepted with {"task_id": "..."} for async
+        // processing.  Poll until the task reaches a terminal state.
+        if status == StatusCode::ACCEPTED {
+            let upload_resp: UploadResponse = resp
+                .json()
+                .await
+                .context("Failed to parse upload 202 response")?;
+            debug!(
+                "Upload accepted, task_id={} — polling for completion",
+                upload_resp.task_id
+            );
+            self.poll_upload_status(&upload_resp.task_id, &filename)
+                .await?;
+        }
+
         Ok(())
+    }
+
+    /// Poll `GET /api/upload-status/<task_id>/` until the task reaches
+    /// `completed` or `failed`, or the maximum number of attempts is exceeded.
+    async fn poll_upload_status(&self, task_id: &str, filename: &str) -> Result<()> {
+        let status_url = format!("{}/api/upload-status/{}/", self.base_url, task_id);
+
+        for attempt in 1..=UPLOAD_POLL_MAX_ATTEMPTS {
+            tokio::time::sleep(POLL_INTERVAL).await;
+
+            let resp = self
+                .client
+                .get(&status_url)
+                .header("Authorization", self.auth_header())
+                .send()
+                .await
+                .with_context(|| {
+                    format!("Failed to poll upload status for task {}", task_id)
+                })?;
+
+            if !resp.status().is_success() {
+                bail!(
+                    "Upload status check failed ({}): task {}",
+                    resp.status(),
+                    task_id
+                );
+            }
+
+            let task_status: UploadStatusResponse = resp
+                .json()
+                .await
+                .context("Failed to parse upload status response")?;
+
+            match task_status.status.as_str() {
+                "completed" => {
+                    debug!(
+                        "Upload task {} completed (poll attempt {})",
+                        task_id, attempt
+                    );
+                    return Ok(());
+                }
+                "failed" => {
+                    let msg = if task_status.error_message.is_empty() {
+                        "unknown server error".to_string()
+                    } else {
+                        task_status.error_message
+                    };
+                    bail!(
+                        "Upload of '{}' failed on server: {}",
+                        filename,
+                        msg
+                    );
+                }
+                other => {
+                    debug!(
+                        "Upload task {} status='{}' (attempt {}/{})",
+                        task_id, other, attempt, UPLOAD_POLL_MAX_ATTEMPTS
+                    );
+                }
+            }
+        }
+
+        bail!(
+            "Upload of '{}' timed out after {} seconds (task {})",
+            filename,
+            UPLOAD_POLL_MAX_ATTEMPTS as u64 * POLL_INTERVAL.as_secs(),
+            task_id
+        );
     }
 
     pub async fn delete_package(&self, repo_uid: &str, package_uid: &str) -> Result<()> {
@@ -284,7 +386,35 @@ mod tests {
         assert_eq!(pkgs[1].version, PackageVersion::Raw("0".to_string()));
 
         let requests = server.requests();
-        assert!(requests[0].starts_with("GET /api/repos/myrepo/packages/"));
+        assert!(
+            requests[0].starts_with("GET /api/myrepo/packages/"),
+            "expected GET /api/myrepo/packages/, got: {}",
+            requests[0].lines().next().unwrap_or("")
+        );
+    }
+
+    #[tokio::test]
+    async fn list_packages_url_must_not_contain_repos_prefix() {
+        // Regression: the endpoint is /api/<repo_uid>/packages/, NOT
+        // /api/repos/<repo_uid>/packages/.  The latter caused silent 404
+        // → empty list → duplicate uploads.
+        let body = r#"{"results":[],"next":null}"#;
+        let server = MockServer::start(vec![MockResponse::json(200, body)]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let _ = client.list_packages("deb").await.unwrap();
+
+        let requests = server.requests();
+        let request_line = requests[0].lines().next().unwrap_or("");
+        assert!(
+            !request_line.contains("/api/repos/"),
+            "URL must NOT contain /api/repos/ prefix — got: {}",
+            request_line
+        );
+        assert!(
+            request_line.starts_with("GET /api/deb/packages/"),
+            "expected GET /api/deb/packages/, got: {}",
+            request_line
+        );
     }
 
     #[tokio::test]
@@ -296,7 +426,7 @@ mod tests {
                 MockResponse::json(
                     200,
                     &format!(
-                        r#"{{"results":[{{"package_uid":"u1","package_name":"a-1.0.0.deb"}}],"next":"{}/api/repos/r/packages/?page=2"}}"#,
+                        r#"{{"results":[{{"package_uid":"u1","package_name":"a-1.0.0.deb"}}],"next":"{}/api/r/packages/?page=2"}}"#,
                         url
                     ),
                 ),
@@ -314,11 +444,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_packages_404_means_empty() {
+    async fn list_packages_404_is_an_error() {
+        // A 404 means the repo doesn't exist on the server — it must NOT
+        // be silently treated as "empty repo" (that caused duplicate uploads).
         let server = MockServer::start(vec![MockResponse::json(404, "{}")]);
         let client = RepoClient::new(&server.url, "k").unwrap();
-        let pkgs = client.list_packages("missing").await.unwrap();
-        assert!(pkgs.is_empty());
+        let err = client.list_packages("missing").await.unwrap_err();
+        assert!(
+            err.to_string().contains("404"),
+            "expected 404 in error message, got: {}",
+            err
+        );
     }
 
     #[tokio::test]
@@ -345,6 +481,7 @@ mod tests {
         let path = dir.path().join("tool-1.0.0.deb");
         std::fs::write(&path, b"fake-deb-bytes").unwrap();
 
+        // Server returns 200 (legacy sync response — no async polling needed)
         let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
         let client = RepoClient::new(&server.url, "k").unwrap();
         client.upload_package("myrepo", &path, false).await.unwrap();
@@ -354,6 +491,72 @@ mod tests {
         assert!(requests[0].contains("name=\"package_file\""));
         assert!(requests[0].contains("tool-1.0.0.deb"));
         assert!(!requests[0].contains("name=\"overwrite\""));
+    }
+
+    #[tokio::test]
+    async fn upload_package_202_polls_until_completed() {
+        // Server returns 202 with task_id, then status poll returns "completed".
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"abc-123"}"#),
+            MockResponse::json(200, r#"{"status":"completed","error_message":""}"#),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        client.upload_package("r", &path, false).await.unwrap();
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("POST /api/r/upload/"));
+        assert!(
+            requests[1].starts_with("GET /api/upload-status/abc-123/"),
+            "expected poll request, got: {}",
+            requests[1].lines().next().unwrap_or("")
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_package_202_failed_task_returns_error() {
+        // Server returns 202, then status poll returns "failed" with message.
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"fail-task"}"#),
+            MockResponse::json(
+                200,
+                r#"{"status":"failed","error_message":"Package X already exists in destination repo deb and 'overwrite' is not specified"}"#,
+            ),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let err = client.upload_package("r", &path, false).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("already exists"),
+            "expected 'already exists' in error, got: {}",
+            msg
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_package_202_polls_through_processing_state() {
+        // Server returns 202, first poll returns "processing", second returns "completed".
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"proc-task"}"#),
+            MockResponse::json(200, r#"{"status":"processing","error_message":""}"#),
+            MockResponse::json(200, r#"{"status":"completed","error_message":""}"#),
+        ]);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        std::fs::write(&path, b"fake").unwrap();
+
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        client.upload_package("r", &path, false).await.unwrap();
+
+        let requests = server.requests();
+        assert_eq!(requests.len(), 3);
     }
 
     #[tokio::test]

@@ -99,7 +99,8 @@ async fn sync_project_inner(
                     }
                     Err(e)
                         if project.on_conflict == OnConflict::Skip
-                            && e.to_string().contains("400") =>
+                            && (e.to_string().contains("400")
+                                || e.to_string().contains("already exists")) =>
                     {
                         info!(
                             "[{}] Skipping {} — already exists in repository",
@@ -380,9 +381,10 @@ mod tests {
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         let server = MockServer::start(vec![
-            empty_list(),                  // initial repo listing
-            MockResponse::json(200, "{}"), // upload
-            empty_list(),                  // refresh listing after upload
+            empty_list(),                                                            // initial repo listing
+            MockResponse::json(202, r#"{"task_id":"t1"}"#),                         // upload accepted
+            MockResponse::json(200, r#"{"status":"completed","error_message":""}"#), // status poll
+            empty_list(),                                                            // refresh listing after upload
         ]);
         let client = RepoClient::new(&server.url, "k").unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -412,9 +414,44 @@ mod tests {
         let pkg_path = staging.path().join("tool-1.2.0.deb");
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
+        // Server accepts upload (202) then background processing fails with
+        // "already exists" — the status poll returns "failed".
         let server = MockServer::start(vec![
             empty_list(),
-            MockResponse::json(400, "already exists"), // upload rejected
+            MockResponse::json(202, r#"{"task_id":"skip-t"}"#),
+            MockResponse::json(
+                200,
+                r#"{"status":"failed","error_message":"Package tool already exists in destination repo r and 'overwrite' is not specified"}"#,
+            ),
+            empty_list(),
+        ]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        let p = project(
+            &format!("file://{}", pkg_path.display()),
+            5,
+            OnConflict::Skip,
+        );
+        let result = sync_project(&p, &client, dir.path(), false).await;
+
+        assert_eq!(result.actions.len(), 1);
+        assert!(matches!(
+            &result.actions[0],
+            SyncAction::Skipped { version } if *version == PackageVersion::parse("1.2.0")
+        ));
+    }
+
+    #[tokio::test]
+    async fn conflict_with_skip_policy_http400_reports_skipped() {
+        // Legacy path: server returns 400 directly (no async processing).
+        let staging = tempfile::tempdir().unwrap();
+        let pkg_path = staging.path().join("tool-1.2.0.deb");
+        std::fs::write(&pkg_path, b"fake-deb").unwrap();
+
+        let server = MockServer::start(vec![
+            empty_list(),
+            MockResponse::json(400, "already exists"),
             empty_list(),
         ]);
         let client = RepoClient::new(&server.url, "k").unwrap();
@@ -442,7 +479,11 @@ mod tests {
 
         let server = MockServer::start(vec![
             empty_list(),
-            MockResponse::json(400, "already exists"),
+            MockResponse::json(202, r#"{"task_id":"err-t"}"#),
+            MockResponse::json(
+                200,
+                r#"{"status":"failed","error_message":"Package tool already exists in destination repo r and 'overwrite' is not specified"}"#,
+            ),
         ]);
         let client = RepoClient::new(&server.url, "k").unwrap();
         let dir = tempfile::tempdir().unwrap();
@@ -473,6 +514,27 @@ mod tests {
         let result = sync_project(&p, &client, dir.path(), true).await;
 
         assert!(matches!(&result.actions[0], SyncAction::Error(_)));
+    }
+
+    #[tokio::test]
+    async fn listing_404_becomes_error_action() {
+        // Regression: 404 on listing must NOT silently return empty — it
+        // must be reported as an error to prevent duplicate uploads.
+        let server = MockServer::start(vec![MockResponse::json(404, "{}")]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
+        let result = sync_project(&p, &client, dir.path(), true).await;
+
+        assert!(matches!(&result.actions[0], SyncAction::Error(_)));
+        if let SyncAction::Error(msg) = &result.actions[0] {
+            assert!(
+                msg.contains("404"),
+                "expected error to mention 404, got: {}",
+                msg
+            );
+        }
     }
 
     // ── download_package ───────────────────────────────────────────────────

@@ -839,7 +839,7 @@ mod tests {
         ]);
 
         // gpg_key is a URL pointing to the mock server
-        let key_url = format!("{}/key.asc", &server.url);
+        let key_url = format!("{}/key.asc", server.url);
         let s = source_with_gpg("placeholder", Some(&key_url)).with_url(&server.url);
 
         let pkgs = s.fetch_latest(10).await.unwrap();

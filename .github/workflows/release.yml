@@ -10,7 +10,7 @@ jobs:
   # Skip if it is the version-bump commit itself (avoids an infinite loop).
   version:
     name: Read version
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
     outputs:
@@ -72,7 +72,7 @@ jobs:
     name: Wait for CI
     needs: version
     if: needs.version.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - name: Wait for CI checks on the triggering commit
         env:
@@ -107,7 +107,7 @@ jobs:
   build:
     name: Build · ${{ matrix.target }}
     needs: wait-ci
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     container: debian:bookworm-slim
     strategy:
       fail-fast: false
@@ -173,7 +173,7 @@ jobs:
   package:
     name: Package · ${{ matrix.arch }}
     needs: [version, build]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       fail-fast: false
       matrix:
@@ -303,7 +303,7 @@ jobs:
   release:
     name: Create release
     needs: [version, package]
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
 

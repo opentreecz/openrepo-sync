@@ -10,7 +10,7 @@ jobs:
   # Skip if it is the version-bump commit itself (avoids an infinite loop).
   version:
     name: Read version
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     outputs:
@@ -72,7 +72,7 @@ jobs:
     name: Wait for CI
     needs: version
     if: needs.version.outputs.skip != 'true'
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - name: Wait for CI checks on the triggering commit
         env:
@@ -303,7 +303,7 @@ jobs:
   release:
     name: Create release
     needs: [version, package]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     permissions:
       contents: write
 

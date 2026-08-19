@@ -4,6 +4,12 @@ title: Source Types
 permalink: /sources/
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # Source Types
 
 Each project's `source` block specifies where to look for new package versions. The `type` field selects which source driver to use.

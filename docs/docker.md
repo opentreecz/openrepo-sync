@@ -4,6 +4,12 @@ title: Docker
 permalink: /docker/
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # Docker
 
 `openrepo-sync` is published as a multi-platform Docker image to the GitHub Container Registry (GHCR). This page is a complete, step-by-step walkthrough for running it in a container.

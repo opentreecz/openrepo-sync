@@ -4,6 +4,12 @@ title: API Reference
 permalink: /api/
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # OpenRepo REST API Reference
 
 This page documents the OpenRepo REST API as used by `openrepo-sync`. The API is built on [Django REST Framework](https://www.django-rest-framework.org/) and serves both the OpenRepo web frontend and CLI clients.

@@ -4,6 +4,12 @@ title: Installation
 permalink: /install/
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # Installation
 
 ## Requirements

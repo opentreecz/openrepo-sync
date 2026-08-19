@@ -4,6 +4,12 @@ title: Test Coverage
 permalink: /coverage/
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="96" height="96">
+  </a>
+</p>
+
 # Test Coverage
 
 [![codecov](https://codecov.io/gh/opentreecz/openrepo-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/opentreecz/openrepo-sync)

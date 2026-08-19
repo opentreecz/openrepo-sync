@@ -107,7 +107,7 @@ jobs:
   build:
     name: Build · ${{ matrix.target }}
     needs: wait-ci
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     container: debian:bookworm-slim
     strategy:
       fail-fast: false
@@ -173,7 +173,7 @@ jobs:
   package:
     name: Package · ${{ matrix.arch }}
     needs: [version, build]
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:

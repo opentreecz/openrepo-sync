@@ -23,7 +23,7 @@ on:
 jobs:
   docker-build:
     name: Docker Compose Build
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7

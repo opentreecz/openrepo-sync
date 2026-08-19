@@ -12,7 +12,7 @@ on:
 jobs:
   docker:
     name: Build & push Docker image
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     permissions:
       contents: write

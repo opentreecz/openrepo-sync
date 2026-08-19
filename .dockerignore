@@ -1,0 +1,13 @@
+# Exclude files not needed for building from source
+target/
+.git/
+.github/
+docker-context/
+*.deb
+*.rpm
+docs/
+man/
+.claude/
+.env
+config.yaml
+projects/*.yaml

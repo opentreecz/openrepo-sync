@@ -623,4 +623,283 @@ mod tests {
             "unexpected error: {err}"
         );
     }
+
+    // ── constructor validation tests ───────────────────────────────────────
+
+    #[test]
+    fn empty_components_rejected() {
+        let err = DebRepoSource::new(
+            "https://example.com",
+            vec!["bookworm".to_string()],
+            vec![],
+            vec!["amd64".to_string()],
+            None,
+            None,
+            false,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("components must not be empty"));
+    }
+
+    #[test]
+    fn empty_architectures_rejected() {
+        let err = DebRepoSource::new(
+            "https://example.com",
+            vec!["bookworm".to_string()],
+            vec!["main".to_string()],
+            vec![],
+            None,
+            None,
+            false,
+            None,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("architectures must not be empty"));
+    }
+
+    // ── GPG verification tests ─────────────────────────────────────────────
+
+    fn source_with_gpg(url: &str, gpg_key: Option<&str>) -> DebRepoSource {
+        DebRepoSource::new(
+            url,
+            vec!["stable".to_string()],
+            vec!["main".to_string()],
+            vec!["amd64".to_string()],
+            None,
+            None,
+            true,
+            gpg_key,
+        )
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn verify_gpg_false_skips_verification() {
+        // verify_gpg: false should succeed even if the server returns nothing
+        // useful (no InRelease endpoint needed).
+        let body = packages_text(&[("nginx", "1.24.0-1", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"), // Packages.gz
+            MockResponse::json(200, &body),       // Packages
+        ]);
+        let s = source("placeholder").with_url(&server.url);
+
+        // source() helper uses verify_gpg: false
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_skips_when_no_key_configured() {
+        // verify_gpg: true but gpg_key: None → should skip GPG and proceed
+        let body = packages_text(&[("nginx", "1.24.0-1", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"), // Packages.gz
+            MockResponse::json(200, &body),       // Packages
+        ]);
+        let s = source_with_gpg("placeholder", None).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_fails_when_inrelease_fetch_fails() {
+        // verify_gpg: true, gpg_key set, but InRelease returns 404
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"), // InRelease fetch
+        ]);
+        let s = source_with_gpg("placeholder", Some("inline-key-data")).with_url(&server.url);
+
+        let err = s.fetch_latest(10).await.unwrap_err();
+        assert!(
+            err.to_string().contains("GPG verification failed")
+                || err.to_string().contains("InRelease"),
+            "unexpected error: {err}"
+        );
+    }
+
+    // ── GPG tests that require the gpg binary ──────────────────────────────
+
+    use crate::test_util::gpg_available;
+
+    /// Generate a temporary GPG key pair and return (public_key_armor, gnupghome).
+    /// The returned tempdir must be kept alive for the key to remain valid.
+    fn generate_test_gpg_key() -> (String, tempfile::TempDir) {
+        let gnupghome = tempfile::tempdir().unwrap();
+        let key_params = "%no-protection\nKey-Type: RSA\nKey-Length: 2048\nName-Real: Test Key\nName-Email: test@example.com\n%commit\n";
+        let params_file = gnupghome.path().join("key-params.txt");
+        std::fs::write(&params_file, key_params).unwrap();
+
+        let status = std::process::Command::new("gpg")
+            .args([
+                "--homedir",
+                gnupghome.path().to_str().unwrap(),
+                "--batch",
+                "--gen-key",
+                params_file.to_str().unwrap(),
+            ])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success(), "gpg --gen-key failed");
+
+        let output = std::process::Command::new("gpg")
+            .args([
+                "--homedir",
+                gnupghome.path().to_str().unwrap(),
+                "--armor",
+                "--export",
+                "test@example.com",
+            ])
+            .output()
+            .unwrap();
+        assert!(output.status.success(), "gpg --export failed");
+
+        let pubkey = String::from_utf8(output.stdout).unwrap();
+        (pubkey, gnupghome)
+    }
+
+    /// Create a clearsigned InRelease-like file using the test key.
+    fn sign_inrelease(content: &str, gnupghome: &std::path::Path) -> String {
+        let tmp = tempfile::tempdir().unwrap();
+        let input_file = tmp.path().join("Release");
+        std::fs::write(&input_file, content).unwrap();
+
+        let output = std::process::Command::new("gpg")
+            .args([
+                "--homedir",
+                gnupghome.to_str().unwrap(),
+                "--batch",
+                "--yes",
+                "--clearsign",
+                "--local-user",
+                "test@example.com",
+                input_file.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "gpg --clearsign failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let signed_file = tmp.path().join("Release.asc");
+        std::fs::read_to_string(&signed_file).unwrap()
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_succeeds_with_valid_signature() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        let (pubkey, gnupghome) = generate_test_gpg_key();
+        let inrelease_content =
+            "Suite: stable\nCodename: stable\nDate: Mon, 18 Aug 2026 00:00:00 UTC\n";
+        let signed_inrelease = sign_inrelease(inrelease_content, gnupghome.path());
+
+        // Mock server: serves InRelease (for GPG check), then Packages index
+        let body = packages_text(&[("nginx", "1.24.0-1", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(200, &signed_inrelease), // InRelease
+            MockResponse::json(404, "not found"),       // Packages.gz
+            MockResponse::json(200, &body),             // Packages
+        ]);
+        let s = source_with_gpg("placeholder", Some(&pubkey)).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "nginx_1.24.0-1_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_key_from_url() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        let (pubkey, gnupghome) = generate_test_gpg_key();
+        let inrelease_content = "Suite: stable\nCodename: stable\n";
+        let signed_inrelease = sign_inrelease(inrelease_content, gnupghome.path());
+
+        let body = packages_text(&[("curl", "7.88.1-1", "pool/curl_7.88.1-1_amd64.deb")]);
+
+        // The key is served via HTTP (first request), then InRelease, then Packages
+        let server = MockServer::start(vec![
+            MockResponse::json(200, &pubkey),           // GPG key fetch
+            MockResponse::json(200, &signed_inrelease), // InRelease
+            MockResponse::json(404, "not found"),       // Packages.gz
+            MockResponse::json(200, &body),             // Packages
+        ]);
+
+        // gpg_key is a URL pointing to the mock server
+        let key_url = format!("{}/key.asc", &server.url);
+        let s = source_with_gpg("placeholder", Some(&key_url)).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "curl_7.88.1-1_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_key_inline() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        let (pubkey, gnupghome) = generate_test_gpg_key();
+        let inrelease_content = "Suite: stable\nCodename: stable\n";
+        let signed_inrelease = sign_inrelease(inrelease_content, gnupghome.path());
+
+        let body = packages_text(&[("tool", "2.0.0", "pool/tool_2.0.0_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(200, &signed_inrelease), // InRelease
+            MockResponse::json(404, "not found"),       // Packages.gz
+            MockResponse::json(200, &body),             // Packages
+        ]);
+
+        // gpg_key is the inline ASCII-armored key (not a URL)
+        let s = source_with_gpg("placeholder", Some(&pubkey)).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "tool_2.0.0_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_fails_with_wrong_key() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        // Generate two different key pairs — sign with one, verify with the other
+        let (_pubkey1, gnupghome1) = generate_test_gpg_key();
+        let (pubkey2, _gnupghome2) = generate_test_gpg_key();
+
+        let inrelease_content = "Suite: stable\nCodename: stable\n";
+        let signed_inrelease = sign_inrelease(inrelease_content, gnupghome1.path());
+
+        let server = MockServer::start(vec![
+            MockResponse::json(200, &signed_inrelease), // InRelease (signed with key1)
+        ]);
+
+        // Use pubkey2 for verification (wrong key)
+        let s = source_with_gpg("placeholder", Some(&pubkey2)).with_url(&server.url);
+
+        let err = s.fetch_latest(10).await.unwrap_err();
+        assert!(
+            err.to_string().contains("GPG")
+                || err.to_string().contains("signature")
+                || err.to_string().contains("verification failed"),
+            "unexpected error: {err}"
+        );
+    }
 }

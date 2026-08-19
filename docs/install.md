@@ -72,6 +72,27 @@ man openrepo-sync
 
 ---
 
+## Build from Source with Docker
+
+If you don't have Rust installed, you can build using Docker — no local toolchain required:
+
+```sh
+git clone https://github.com/opentreecz/openrepo-sync
+cd openrepo-sync
+docker compose build
+```
+
+This uses a multi-stage `Dockerfile.build` that compiles the project inside a Rust container and produces a minimal runtime image identical to the published one.
+
+```sh
+docker compose run --rm openrepo-sync --version   # verify
+docker compose run --rm openrepo-sync --dry-run   # preview sync
+```
+
+See [Docker — Building Locally](../docker/#building-locally-from-source) for full details.
+
+---
+
 ## Docker
 
 ```sh

@@ -242,6 +242,53 @@ docker run --rm --env-file .env \
 
 ---
 
+## Building Locally from Source
+
+Build the Docker image from source without installing Rust or any other toolchain on your machine. The build uses a multi-stage `Dockerfile.build` that compiles the binary inside a container.
+
+### Build the image
+
+```sh
+docker compose build
+```
+
+This compiles `openrepo-sync` from source using `Dockerfile.build` and creates a local image. The first build downloads Rust dependencies (~3-5 minutes); subsequent builds with only source code changes take ~20-30 seconds thanks to Docker layer caching.
+
+### Run the locally-built image
+
+```sh
+docker compose up                                # run sync
+docker compose run --rm openrepo-sync --dry-run  # preview
+docker compose run --rm openrepo-sync --version  # check version
+```
+
+### Pull vs Build
+
+| Command | Description |
+|---|---|
+| `docker compose pull` | Download the pre-built image from GHCR (fastest, multi-platform) |
+| `docker compose build` | Build from source locally (no toolchain needed on host) |
+| `docker compose build --no-cache` | Force a clean rebuild from scratch |
+| `docker compose up --build` | Rebuild and run in one step |
+
+### Requirements
+
+| Requirement | Details |
+|---|---|
+| Docker | 20.10+ with BuildKit support |
+| Disk space | ~2 GB temporary (Rust compiler + build artifacts; freed after build) |
+| Network | Internet access to download Rust crates on first build |
+
+### Build architecture
+
+The local build produces a native binary for your host architecture only. For multi-platform images (`linux/amd64`, `linux/arm64`, `linux/arm/v7`), use the pre-built images from GHCR:
+
+```sh
+docker compose pull
+```
+
+---
+
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -252,3 +299,4 @@ docker run --rm --env-file .env \
 | `No project named '<x>' found` | `--project` name doesn't match any `name:` field in `projects/` | Check the `name:` field inside the YAML files, not the filename |
 | Project silently skipped | File still has `.example` suffix | `mv projects/curl.yaml.example projects/curl.yaml` |
 | `gpg: command not found` | Custom image without `gpg` installed | Set `verify_gpg: false` in the `deb_repo` config, or install `gpg` in your custom image |
+| `docker compose build` fails with "cargo not found" | Using wrong Dockerfile | Ensure `Dockerfile.build` exists and `docker-compose.yml` has `dockerfile: Dockerfile.build` in the `build` block |

@@ -201,6 +201,17 @@ docker compose run --rm openrepo-sync --dry-run   # preview
 docker compose run --rm openrepo-sync             # run for real
 ```
 
+### Build from source
+
+To build the image locally from source (no Rust toolchain required):
+
+```sh
+docker compose build
+docker compose run --rm openrepo-sync --dry-run
+```
+
+See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/#building-locally-from-source) for details.
+
 See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/) for the full walkthrough including scheduling with cron/systemd.
 
 ---

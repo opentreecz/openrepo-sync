@@ -1,6 +1,9 @@
 services:
   openrepo-sync:
     image: ghcr.io/opentreecz/openrepo-sync:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.build
     volumes:
       - ./config.yaml:/config.yaml:ro,z
       - ./projects:/projects:ro,z

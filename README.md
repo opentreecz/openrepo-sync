@@ -133,6 +133,8 @@ source:
   arch_filter: [amd64, arm64]
 ```
 
+**Defaults:** `prerelease: false`, `arch_filter: [amd64, arm64]`.
+
 ### `deb_repo` — Debian APT Repository
 
 Mirrors packages directly from any standard Debian repository (Packages.gz / Packages index).
@@ -152,7 +154,7 @@ source:
   gpg_key: https://nginx.org/keys/nginx_signing.key  # URL or inline ASCII-armored key
 ```
 
-**Defaults:** `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`.
+**Defaults:** `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
 
 ### `direct_url` — Static URL
 
@@ -183,6 +185,8 @@ source:
   folder: "releases/linux"   # optional subfolder
   filename_filter: "*.deb"   # optional glob
 ```
+
+All fields except `project` are optional. Defaults: root listing (no `folder`), all files (no `filename_filter`).
 
 ---
 

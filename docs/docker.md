@@ -233,12 +233,12 @@ docker run --rm --env-file .env \
 | Property | Value |
 |---|---|
 | Base image | `debian:bookworm-slim` |
-| Runtime packages | `ca-certificates`, `dpkg`, `rpm` |
+| Runtime packages | `ca-certificates`, `dpkg`, `rpm`, `gpg` |
 | Runs as | Non-root system user `openrepo` (uid 1000) |
 | Entrypoint | `/usr/bin/openrepo-sync` |
 | Default CMD | `--help` |
 
-**Note:** `gpg` is not installed in the default image. If you use `deb_repo` with `verify_gpg: true`, either extend the image to add `gpg`, or set `verify_gpg: false` to skip signature verification.
+**Note:** The image includes `gpg` for InRelease signature verification (`deb_repo` sources). Set `verify_gpg: false` in the project file to skip GPG checks if your upstream does not provide signed releases.
 
 ---
 
@@ -251,4 +251,4 @@ docker run --rm --env-file .env \
 | `Permission denied` reading mounted files | Host file not world-readable; container runs as non-root `openrepo` user | `chmod 644 config.yaml projects/*.yaml` on the host |
 | `No project named '<x>' found` | `--project` name doesn't match any `name:` field in `projects/` | Check the `name:` field inside the YAML files, not the filename |
 | Project silently skipped | File still has `.example` suffix | `mv projects/curl.yaml.example projects/curl.yaml` |
-| `gpg: command not found` | `gpg` not installed in the container | Set `verify_gpg: false` in the `deb_repo` config, or extend the image to install `gpg` |
+| `gpg: command not found` | Custom image without `gpg` installed | Set `verify_gpg: false` in the `deb_repo` config, or install `gpg` in your custom image |

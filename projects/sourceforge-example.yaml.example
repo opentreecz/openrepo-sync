@@ -16,5 +16,5 @@ on_conflict: skip          # skip, overwrite, or error (default) when package al
 source:
   type: sourceforge
   project: my-sf-project      # SourceForge project identifier (from the URL)
-  folder: "releases/linux"    # optional subfolder; omit for root listing
-  filename_filter: "*.deb"    # optional glob filter
+  folder: "releases/linux"    # optional; default: root listing (omit for project root)
+  filename_filter: "*.deb"    # optional; default: all files (omit to keep all)

@@ -146,6 +146,16 @@ pub fn dpkg_deb_available() -> bool {
         .unwrap_or(false)
 }
 
+/// True when gpg can run on this machine (present on Debian/Ubuntu,
+/// including the CI runners; tests that need it skip themselves otherwise).
+pub fn gpg_available() -> bool {
+    std::process::Command::new("gpg")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Build a minimal valid .deb with the given version and return its path.
 pub fn build_minimal_deb(dir: &std::path::Path, version: &str) -> std::path::PathBuf {
     let pkg_root = dir.join("pkgroot");

@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH openrepo-sync 1  "openrepo-sync 0.1.0"
+.TH openrepo-sync 1  "openrepo-sync 0.1.27"
 .SH NAME
 openrepo\-sync \- Sync packages from upstream sources into an OpenRepo repository
 .SH SYNOPSIS
@@ -103,6 +103,23 @@ source:
   folder: "releases/linux"   # optional subfolder path
   filename_filter: "*.deb"   # optional glob filter
 .fi
+.PP
+Source type \fBdeb_repo\fR \(em Debian APT Repository:
+.nf
+name: nginx
+repo_uid: debian-stable
+keep_versions: 3
+source:
+  type: deb_repo
+  url: https://nginx.org/packages/debian
+  suites: bookworm              # default: [bookworm]
+  components: nginx             # default: [main]
+  architectures: [amd64, arm64] # default: [amd64]
+  package_filter: nginx         # optional
+  filename_filter: "nginx_*.deb" # optional glob
+  verify_gpg: true              # default: true; set false to skip
+  gpg_key: https://nginx.org/keys/nginx_signing.key
+.fi
 .SH ENVIRONMENT
 .TP
 \fBOPENREPO_API_KEY\fR
@@ -144,6 +161,16 @@ Fine\-grained log filter (show HTTP requests):
 .nf
   RUST_LOG=debug openrepo-sync --project curl
 .fi
+.PP
+Build the Docker image from source (no local Rust toolchain needed):
+.nf
+  docker compose build
+.fi
+.PP
+Run the locally\-built image:
+.nf
+  docker compose run --rm openrepo-sync --dry-run
+.fi
 .SH FILES
 .TP
 \fIconfig.yaml\fR
@@ -154,4 +181,4 @@ Default directory for per\-project YAML files.
 .SH SEE ALSO
 \fBdpkg\-deb\fR(1), \fBrpm\fR(8)
 .SH VERSION
-v0.1.0
+v0.1.27

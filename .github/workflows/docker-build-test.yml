@@ -1,0 +1,38 @@
+name: Docker Build Test
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile.build'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile.build'
+      - 'docker-compose.yml'
+      - '.dockerignore'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'src/**'
+  workflow_dispatch:
+
+jobs:
+  docker-build:
+    name: Docker Compose Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build from source
+        run: docker compose build
+
+      - name: Verify binary version
+        run: docker compose run --rm openrepo-sync --version
+
+      - name: Verify help output
+        run: docker compose run --rm openrepo-sync --help

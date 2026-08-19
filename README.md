@@ -283,6 +283,18 @@ Full documentation is available at **[opentreecz.github.io/openrepo-sync](https:
 
 ---
 
+## Contributing
+
+Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- How to report bugs and request features
+- Development setup and workflow
+- Commit message conventions
+- Pull request guidelines
+- Code style and testing
+
+---
+
 ## License
 
 See [LICENSE](LICENSE).

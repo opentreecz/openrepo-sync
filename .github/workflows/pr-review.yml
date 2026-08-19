@@ -1,0 +1,42 @@
+name: PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+jobs:
+  review:
+    name: Automated PR Review
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: anomalyco/opencode/github@latest
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        with:
+          model: anthropic/claude-sonnet-4-20250514
+          prompt: |
+            Review this pull request for the openrepo-sync project (a Rust CLI tool
+            that syncs packages from upstream sources into an OpenRepo repository).
+
+            Focus on:
+            - Code correctness and potential bugs
+            - Error handling (uses anyhow::Result throughout)
+            - Rust best practices and idiomatic patterns
+            - Test coverage for new functionality
+            - Documentation completeness (docs/, man page, example files)
+            - Security concerns (credential handling, input validation)
+            - Performance implications
+
+            Be concise and constructive. Only comment on issues worth fixing.
+            Do not comment on style choices that pass cargo fmt and clippy.

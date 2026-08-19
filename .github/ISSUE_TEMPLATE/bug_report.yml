@@ -1,0 +1,97 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill in as much detail as possible.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `openrepo-sync --version`
+      placeholder: "openrepo-sync 0.1.28"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - Docker (ghcr.io image)
+        - Docker (built from source)
+        - .deb package
+        - .rpm package
+        - Built from source (cargo)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: Describe what happened and what you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the behavior.
+      placeholder: |
+        1. Create project file with ...
+        2. Run `openrepo-sync --config ...`
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: Run with `--verbose` or `RUST_LOG=debug` and paste the relevant output.
+      render: text
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Project configuration
+      description: Paste the relevant project YAML (redact any sensitive values).
+      render: yaml
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux (Debian/Ubuntu)
+        - Linux (RHEL/Fedora)
+        - Linux (other)
+        - Docker (Linux host)
+        - macOS
+        - Windows (WSL)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: arch
+    attributes:
+      label: Architecture
+      options:
+        - x86_64 / amd64
+        - aarch64 / arm64
+        - armhf / armv7
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context, screenshots, or information.

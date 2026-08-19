@@ -1,0 +1,66 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Please describe what you'd like and why.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem does this feature solve? Is this related to a frustration?
+      placeholder: I'm always frustrated when ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: Describe the solution or behavior you'd like.
+      placeholder: It would be great if openrepo-sync could ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Have you considered any alternative approaches?
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      description: Which part of the project does this relate to?
+      options:
+        - New source type
+        - Existing source type (github)
+        - Existing source type (deb_repo)
+        - Existing source type (direct_url / direct_url_latest)
+        - Existing source type (sourceforge)
+        - Configuration / YAML schema
+        - CLI / output / logging
+        - Docker / container
+        - Documentation
+        - CI / build / packaging
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: config_example
+    attributes:
+      label: Example configuration
+      description: If applicable, show how the feature would look in a project YAML file.
+      render: yaml
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Any other context, mockups, or references.

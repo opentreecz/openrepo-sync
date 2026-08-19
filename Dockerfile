@@ -52,7 +52,9 @@ COPY openrepo-sync_${VERSION}_amd64.deb \
 RUN /usr/local/bin/install-pkg.sh "$TARGETARCH" "$TARGETVARIANT" "$VERSION" \
  && rm /usr/local/bin/install-pkg.sh
 
-RUN useradd --system --no-create-home --shell /usr/sbin/nologin --uid 1000 openrepo
+RUN useradd --system --create-home --shell /usr/sbin/nologin --uid 1000 openrepo
+
+ENV GNUPGHOME=/home/openrepo/.gnupg
 
 USER openrepo
 

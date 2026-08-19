@@ -268,6 +268,8 @@ impl DebRepoSource {
         let dearmored = tmp.path().join("repo-dearmored.gpg");
         let dearmor_out = std::process::Command::new("gpg")
             .args([
+                "--homedir",
+                tmp.path().to_str().unwrap(),
                 "--dearmor",
                 "--output",
                 dearmored.to_str().unwrap(),
@@ -285,6 +287,8 @@ impl DebRepoSource {
 
         let verify_out = std::process::Command::new("gpg")
             .args([
+                "--homedir",
+                tmp.path().to_str().unwrap(),
                 "--no-default-keyring",
                 "--keyring",
                 dearmored.to_str().unwrap(),

@@ -102,7 +102,7 @@ architectures: [amd64, arm64]
 
 ### GPG verification
 
-When `verify_gpg: true`, the `InRelease` file is fetched and verified using the `gpg` CLI. The key can be supplied as:
+When `verify_gpg: true` (the default), the `InRelease` file is fetched and its GPG signature is verified before any packages are downloaded. The key can be supplied as:
 
 - A URL (`http://` or `https://`) — fetched at sync time
 - An inline ASCII-armored key block:
@@ -114,7 +114,9 @@ gpg_key: |
   -----END PGP PUBLIC KEY BLOCK-----
 ```
 
-Requires `gpg` to be installed on the host (or in the container). Set `verify_gpg: false` to skip signature verification.
+Requires `gpg` to be installed on the host (or in the container).
+
+Set `verify_gpg: false` to skip signature verification entirely. When disabled, the `gpg_key` field is ignored and no `InRelease` file is fetched. This is useful when the upstream repository does not provide a signed release file, or when you prefer to manage trust outside of openrepo-sync.
 
 ### Fields
 

@@ -48,12 +48,16 @@ source:
 
   # Verify the InRelease GPG signature before downloading any packages.
   # Requires the `gpg` binary to be installed. Default: true.
+  # Set to false to skip GPG verification entirely — useful when the upstream
+  # repository does not provide a signed InRelease file, or when you prefer
+  # to manage trust externally.
   verify_gpg: true
+  # verify_gpg: false    # ← disable GPG signature verification
 
   # GPG public key used for signature verification. Either:
   #   - A URL (http:// or https://) — fetched at sync time
   #   - An inline ASCII-armored key block
-  # Required when verify_gpg is true.
+  # Required when verify_gpg is true. Ignored when verify_gpg is false.
   gpg_key: https://nginx.org/keys/nginx_signing.key
 
   # Inline ASCII-armored key example (alternative to URL):

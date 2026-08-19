@@ -83,7 +83,7 @@ source:
   components: nginx
   architectures: [amd64, arm64]
   package_filter: nginx
-  verify_gpg: true
+  verify_gpg: true                         # set to false to skip GPG verification
   gpg_key: https://nginx.org/keys/nginx_signing.key
 ```
 

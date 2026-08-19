@@ -152,7 +152,7 @@ source:
   gpg_key: https://nginx.org/keys/nginx_signing.key  # URL or inline ASCII-armored key
 ```
 
-**Defaults:** `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`.
+**Defaults:** `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
 
 ### `direct_url` — Static URL
 

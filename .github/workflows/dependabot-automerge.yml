@@ -7,7 +7,7 @@ on:
 jobs:
   automerge:
     name: Auto-merge Dependabot PR
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: github.actor == 'dependabot[bot]'
     permissions:
       contents: write

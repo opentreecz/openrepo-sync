@@ -42,13 +42,13 @@ The API key is available from your OpenRepo user profile (or `GET /api/whoami` �
 
 Every project file requires these top-level fields:
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `name` | string | Yes | Identifier used in log output and with `--project` |
-| `repo_uid` | string | Yes | Target OpenRepo repository identifier |
-| `keep_versions` | integer | Yes | Number of versions to retain; older ones are deleted |
-| `on_conflict` | string | No | `error` (default), `skip`, or `overwrite` |
-| `source` | object | Yes | Upstream source configuration (see [Source Types](../sources/)) |
+| Field | Type | Required | Default | Description |
+|---|---|---|---|---|
+| `name` | string | Yes | — | Identifier used in log output and with `--project` |
+| `repo_uid` | string | Yes | — | Target OpenRepo repository identifier |
+| `keep_versions` | integer | Yes | — | Number of versions to retain; older ones are deleted |
+| `on_conflict` | string | No | `error` | `error`, `skip`, or `overwrite` |
+| `source` | object | Yes | — | Upstream source configuration (see [Source Types](../sources/)) |
 
 ### `on_conflict`
 
@@ -70,8 +70,9 @@ source:
   type: github
   owner: curl
   repo: curl
-  asset_filter: "*.deb"
-  arch_filter: [amd64, arm64]   # default: prefer amd64
+  asset_filter: "*.deb"              # optional; omit to keep all assets
+  prerelease: false                   # default: false
+  arch_filter: [amd64, arm64]         # default: [amd64, arm64]
 ```
 
 ### `deb_repo`
@@ -79,11 +80,11 @@ source:
 source:
   type: deb_repo
   url: https://nginx.org/packages/debian
-  suites: bookworm
-  components: nginx
-  architectures: [amd64, arm64]
-  package_filter: nginx
-  verify_gpg: true                         # set to false to skip GPG verification
+  suites: bookworm                            # default: [bookworm]
+  components: nginx                           # default: [main]
+  architectures: [amd64, arm64]               # default: [amd64]
+  package_filter: nginx                       # optional; omit to sync all packages
+  verify_gpg: true                            # default: true; set to false to skip GPG verification
   gpg_key: https://nginx.org/keys/nginx_signing.key
 ```
 
@@ -106,8 +107,8 @@ source:
 source:
   type: sourceforge
   project: my-sf-project
-  folder: "releases/linux"
-  filename_filter: "*.deb"
+  folder: "releases/linux"            # optional; default: root listing
+  filename_filter: "*.deb"            # optional; default: all files
 ```
 
 ---

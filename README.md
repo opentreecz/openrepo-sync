@@ -133,6 +133,8 @@ source:
   arch_filter: [amd64, arm64]
 ```
 
+**Defaults:** `prerelease: false`, `arch_filter: [amd64, arm64]`.
+
 ### `deb_repo` — Debian APT Repository
 
 Mirrors packages directly from any standard Debian repository (Packages.gz / Packages index).
@@ -183,6 +185,8 @@ source:
   folder: "releases/linux"   # optional subfolder
   filename_filter: "*.deb"   # optional glob
 ```
+
+All fields except `project` are optional. Defaults: root listing (no `folder`), all files (no `filename_filter`).
 
 ---
 

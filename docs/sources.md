@@ -145,9 +145,9 @@ source:
 
 ### Fields
 
-| Field | Required | Description |
-|---|---|---|
-| `url` | Yes | Full URL to the package file |
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `url` | Yes | — | Full URL to the package file |
 
 ### Behaviour
 
@@ -173,9 +173,9 @@ source:
 
 ### Fields
 
-| Field | Required | Description |
-|---|---|---|
-| `url` | Yes | URL to the always-current package file |
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `url` | Yes | — | URL to the always-current package file |
 
 ### Behaviour
 
@@ -207,11 +207,11 @@ source:
 
 ### Fields
 
-| Field | Required | Description |
-|---|---|---|
-| `project` | Yes | SourceForge project identifier (from the URL) |
-| `folder` | No | Subfolder path within the project's Files section |
-| `filename_filter` | No | Glob pattern to filter filenames |
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `project` | Yes | — | SourceForge project identifier (from the URL) |
+| `folder` | No | (root listing) | Subfolder path within the project's Files section |
+| `filename_filter` | No | (all files) | Glob pattern to filter filenames |
 
 ### Behaviour
 

@@ -224,6 +224,20 @@ impl DebRepoSource {
             return Ok(());
         };
 
+        // Check that the gpg binary is available before attempting verification.
+        if std::process::Command::new("gpg")
+            .arg("--version")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_err()
+        {
+            bail!(
+                "gpg binary not found. Install gpg or set verify_gpg: false \
+                 in the project config to skip signature verification"
+            );
+        }
+
         // Resolve the key material.
         let key_data = if key_source.starts_with("http://") || key_source.starts_with("https://") {
             self.client

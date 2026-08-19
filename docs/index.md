@@ -3,6 +3,12 @@ layout: home
 title: openrepo-sync
 ---
 
+<p align="center">
+  <a href="https://github.com/opentreecz">
+    <img src="assets/logo.png" alt="OpenTree" width="128" height="128">
+  </a>
+</p>
+
 # openrepo-sync
 
 A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources.

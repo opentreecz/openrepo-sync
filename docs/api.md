@@ -176,7 +176,7 @@ curl -X POST \
 
 ---
 
-### `GET /api/repos/<repo_uid>/packages/`
+### `GET /api/<repo_uid>/packages/`
 
 List all packages in a repository. Response is paginated.
 
@@ -184,7 +184,7 @@ List all packages in a repository. Response is paginated.
 ```json
 {
   "count": 42,
-  "next": "https://openrepo.example.com/api/repos/my-repo/packages/?page=2",
+  "next": "https://openrepo.example.com/api/my-repo/packages/?page=2",
   "previous": null,
   "results": [...]
 }
@@ -255,7 +255,7 @@ Copy a package to another repository. The exact request body fields (destination
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/whoami` | Verify credentials on startup |
-| `GET` | `/api/repos/<repo_uid>/packages/` | List packages in a repo (paginated) |
+| `GET` | `/api/<repo_uid>/packages/` | List packages in a repo (paginated) |
 | `POST` | `/api/<repo_uid>/upload/` | Upload a new package |
 | `DELETE` | `/api/<repo_uid>/pkg/<package_uid>/` | Delete an old package (pruning) |
 
@@ -268,7 +268,7 @@ List endpoints follow DRF's standard pagination format:
 ```json
 {
   "count": 42,
-  "next": "https://openrepo.example.com/api/repos/my-repo/packages/?page=2",
+  "next": "https://openrepo.example.com/api/my-repo/packages/?page=2",
   "previous": null,
   "results": [...]
 }

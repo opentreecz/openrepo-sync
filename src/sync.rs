@@ -381,10 +381,10 @@ mod tests {
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         let server = MockServer::start(vec![
-            empty_list(),                                                            // initial repo listing
-            MockResponse::json(202, r#"{"task_id":"t1"}"#),                         // upload accepted
+            empty_list(),                                   // initial repo listing
+            MockResponse::json(202, r#"{"task_id":"t1"}"#), // upload accepted
             MockResponse::json(200, r#"{"status":"completed","error_message":""}"#), // status poll
-            empty_list(),                                                            // refresh listing after upload
+            empty_list(),                                   // refresh listing after upload
         ]);
         let client = RepoClient::new(&server.url, "k").unwrap();
         let dir = tempfile::tempdir().unwrap();

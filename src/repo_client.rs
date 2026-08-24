@@ -91,10 +91,7 @@ impl RepoClient {
 
     pub async fn list_packages(&self, repo_uid: &str) -> Result<Vec<RepoPackage>> {
         let mut packages = Vec::new();
-        let mut page_url = Some(format!(
-            "{}/api/{}/packages/",
-            self.base_url, repo_uid
-        ));
+        let mut page_url = Some(format!("{}/api/{}/packages/", self.base_url, repo_uid));
 
         while let Some(u) = page_url.take() {
             debug!("Fetching packages from {}", u);
@@ -237,9 +234,7 @@ impl RepoClient {
                 .header("Authorization", self.auth_header())
                 .send()
                 .await
-                .with_context(|| {
-                    format!("Failed to poll upload status for task {}", task_id)
-                })?;
+                .with_context(|| format!("Failed to poll upload status for task {}", task_id))?;
 
             if !resp.status().is_success() {
                 bail!(
@@ -268,11 +263,7 @@ impl RepoClient {
                     } else {
                         task_status.error_message
                     };
-                    bail!(
-                        "Upload of '{}' failed on server: {}",
-                        filename,
-                        msg
-                    );
+                    bail!("Upload of '{}' failed on server: {}", filename, msg);
                 }
                 other => {
                     debug!(

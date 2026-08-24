@@ -10,7 +10,7 @@ mod version;
 use anyhow::{Context, Result};
 use clap::{CommandFactory, Parser};
 use std::path::PathBuf;
-use tracing::{debug, info};
+use tracing::{debug, error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
 #[derive(Parser)]
@@ -43,6 +43,10 @@ struct Cli {
     #[arg(long)]
     dry_run: bool,
 
+    /// Run continuously using the schedule from config.yaml
+    #[arg(long)]
+    schedule: bool,
+
     /// Enable debug logging (equivalent to RUST_LOG=debug)
     #[arg(long, short)]
     verbose: bool,
@@ -63,12 +67,52 @@ async fn main() -> Result<()> {
 
     init_logging(cli.verbose);
 
-    let had_error = run(&cli).await?;
+    let had_error = if cli.schedule {
+        run_scheduled(&cli).await?;
+        false
+    } else {
+        run(&cli).await?
+    };
     if had_error {
         std::process::exit(1);
     }
 
     Ok(())
+}
+
+async fn run_scheduled(cli: &Cli) -> Result<()> {
+    let mut first_run = true;
+
+    loop {
+        let global = config::GlobalConfig::load(&cli.config)
+            .with_context(|| format!("Failed to load config from {}", cli.config.display()))?;
+        let interval = global.schedule.interval_duration()?;
+
+        if !global.schedule.enabled {
+            warn!("Schedule is disabled in config; scheduler container is idling");
+            tokio::time::sleep(interval).await;
+            continue;
+        }
+
+        if first_run && !global.schedule.run_on_start {
+            info!(
+                "Waiting {:?} before first scheduled sync (run_on_start=false)",
+                interval
+            );
+            tokio::time::sleep(interval).await;
+        }
+
+        first_run = false;
+        info!("Starting scheduled sync pass");
+        match run(cli).await {
+            Ok(false) => info!("Scheduled sync pass completed successfully"),
+            Ok(true) => warn!("Scheduled sync pass completed with project errors"),
+            Err(err) => error!("Scheduled sync pass failed: {:#}", err),
+        }
+
+        info!("Next scheduled sync in {:?}", interval);
+        tokio::time::sleep(interval).await;
+    }
 }
 
 /// Load configuration, authenticate, and sync all selected projects.
@@ -196,6 +240,7 @@ mod tests {
         assert_eq!(cli.projects, PathBuf::from("projects"));
         assert!(cli.project.is_none());
         assert!(!cli.dry_run);
+        assert!(!cli.schedule);
         assert!(!cli.verbose);
         assert!(!cli.generate_man);
     }
@@ -211,6 +256,7 @@ mod tests {
             "--project",
             "curl",
             "--dry-run",
+            "--schedule",
             "--verbose",
         ])
         .unwrap();
@@ -218,6 +264,7 @@ mod tests {
         assert_eq!(cli.projects, PathBuf::from("/etc/openrepo/projects"));
         assert_eq!(cli.project.as_deref(), Some("curl"));
         assert!(cli.dry_run);
+        assert!(cli.schedule);
         assert!(cli.verbose);
     }
 
@@ -270,6 +317,7 @@ mod tests {
             projects: projects_dir,
             project: None,
             dry_run: true,
+            schedule: false,
             verbose: false,
             generate_man: false,
         }
@@ -334,6 +382,7 @@ mod tests {
             projects: dir.path().join("projects"),
             project: None,
             dry_run: true,
+            schedule: false,
             verbose: false,
             generate_man: false,
         };

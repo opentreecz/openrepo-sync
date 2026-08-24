@@ -26,3 +26,11 @@ openrepo:
 # successful upload, so this does not need to be a persistent volume,
 # even when running in Docker.
 # download_dir: "/tmp/openrepo-sync"
+
+# Optional scheduler settings used when the container is started with
+# `openrepo-sync --schedule` or via `docker compose up -d`.
+# Supported interval units: m = minutes, h = hours, d = days.
+schedule:
+  enabled: true
+  interval: "24h"
+  run_on_start: true

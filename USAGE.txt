@@ -59,9 +59,17 @@ Global config (config.yaml)
     api_url: "https://openrepo.example.com"
     api_key: "${OPENREPO_API_KEY}"   # ${VAR} is expanded from environment
   download_dir: "/tmp/openrepo-sync" # optional; defaults to system temp dir
+  schedule:
+    enabled: true
+    interval: "24h"
+    run_on_start: true
 
 The api_key value supports ${ENV_VAR} expansion.  The recommended practice is to
 store the key in the environment and reference it as ${OPENREPO_API_KEY}.
+
+The schedule block is used by --schedule and Docker Compose.  Supported interval
+units are m, h, and d, for example 30m, 6h, 24h, or 1d.  run_on_start defaults
+to true, so the first scheduled sync runs immediately when the container starts.
 
 
 Per-project files (projects/<name>.yaml)
@@ -299,6 +307,10 @@ Show HTTP-level debug output for a single project:
 Run from cron (suppress info, show only warnings and errors):
 
   RUST_LOG=warn openrepo-sync --config /etc/openrepo-sync/config.yaml
+
+Run as a long-running scheduler from Docker Compose:
+
+  docker compose up -d
 
 
 FILES

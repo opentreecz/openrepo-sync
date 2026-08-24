@@ -144,19 +144,53 @@ services:
       - ./projects:/projects:ro
     environment:
       - OPENREPO_API_KEY=${OPENREPO_API_KEY}
-    command: ["--config", "/config.yaml", "--projects", "/projects"]
-    restart: "no"
+    command: ["--schedule", "--config", "/config.yaml", "--projects", "/projects"]
+    restart: unless-stopped
 ```
 
 ```sh
 docker compose run --rm openrepo-sync --dry-run
 docker compose run --rm openrepo-sync
 docker compose run --rm openrepo-sync --project curl   # single project
+docker compose up -d                                  # scheduled service
 ```
 
-### 10. Automate with a schedule
+### 10. Run the scheduled service
 
-`openrepo-sync` performs one sync pass and exits — designed to be triggered on a schedule.
+The included Compose file starts `openrepo-sync` in scheduler mode. It runs one sync pass immediately by default, then repeats using `schedule.interval` from `config.yaml`.
+
+```yaml
+schedule:
+  enabled: true
+  interval: "24h"
+  run_on_start: true
+```
+
+Start it in the background:
+
+```sh
+docker compose up -d
+```
+
+Check logs:
+
+```sh
+docker compose logs -f openrepo-sync
+```
+
+Stop it:
+
+```sh
+docker compose down
+```
+
+Supported interval units are `m`, `h`, and `d`, for example `30m`, `6h`, `24h`, or `1d`.
+
+`docker compose run --rm openrepo-sync ...` still runs one-shot commands and is recommended for dry-runs.
+
+### 11. External schedulers
+
+The built-in Compose scheduler is recommended for container deployments. You can still run one-shot sync passes from cron or systemd if you prefer host-managed scheduling.
 
 **Cron** (nightly at 02:00):
 
@@ -263,7 +297,7 @@ This compiles `openrepo-sync` from source using `Dockerfile.build` and creates a
 ### Run the locally-built image
 
 ```sh
-docker compose up                                # run sync
+docker compose up -d                             # start scheduled sync service
 docker compose run --rm openrepo-sync --dry-run  # preview
 docker compose run --rm openrepo-sync --version  # check version
 ```

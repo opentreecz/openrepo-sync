@@ -107,7 +107,13 @@ openrepo:
   api_url: "https://openrepo.example.com"
   api_key: "${OPENREPO_API_KEY}"   # ${VAR} expanded from the environment
 download_dir: "/tmp/openrepo-sync" # optional; defaults to the system temp dir
+schedule:
+  enabled: true
+  interval: "24h"
+  run_on_start: true
 ```
+
+`schedule` is used by `openrepo-sync --schedule` and Docker Compose. Supported intervals include `30m`, `6h`, `24h`, and `1d`.
 
 ### Per-project files (`projects/<name>.yaml`)
 
@@ -205,7 +211,10 @@ echo "OPENREPO_API_KEY=your_token_here" > .env
 
 docker compose run --rm openrepo-sync --dry-run   # preview
 docker compose run --rm openrepo-sync             # run for real
+docker compose up -d                              # scheduled sync service
 ```
+
+`docker compose up -d` starts a long-running scheduler container. By default it runs once immediately, then repeats every `schedule.interval` from `config.yaml`.
 
 ### Build from source
 
@@ -218,7 +227,7 @@ docker compose run --rm openrepo-sync --dry-run
 
 See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/#building-locally-from-source) for details.
 
-See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/) for the full walkthrough including scheduling with cron/systemd.
+See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/) for the full walkthrough including scheduled Docker Compose mode.
 
 ---
 
@@ -232,6 +241,7 @@ Options:
   --projects <DIR>    Per-project YAML directory [default: projects/]
   --project <NAME>    Sync only the named project
   --dry-run           Preview actions without uploading or deleting
+  --schedule          Run continuously using schedule settings
   -v, --verbose       Enable debug logging
   -h, --help          Show help
   -V, --version       Show version

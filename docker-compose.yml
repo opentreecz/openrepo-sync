@@ -9,5 +9,5 @@ services:
       - ./projects:/projects:ro,z
     environment:
       - OPENREPO_API_KEY=${OPENREPO_API_KEY}
-    command: ["--config", "/config.yaml", "--projects", "/projects"]
-    restart: "no"
+    command: ["--schedule", "--config", "/config.yaml", "--projects", "/projects"]
+    restart: unless-stopped

@@ -85,6 +85,20 @@ on_conflict is optional.
               error (default), skip, or overwrite.
   source      Upstream source configuration (see Source Types below).
 
+deb_repo sources support two repository layouts:
+
+  layout: debian   Standard dists/<suite>/<component>/binary-<arch>/Packages
+                   layout (default).
+  layout: flat     OBS-style layout with Packages/Packages.gz at the repository
+                   root. In this mode, suites/components/architectures are not
+                   used for metadata URLs; select packages with package_filter
+                   and filename_filter.
+
+package_filter accepts either one package name or a list:
+
+  package_filter: nginx
+  package_filter: [datovka, libdatovka8]
+
 
 SOURCE TYPES
 ------------

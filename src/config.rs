@@ -140,6 +140,16 @@ pub enum OnConflict {
     Overwrite,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DebRepoLayout {
+    /// Standard Debian repository layout: dists/<suite>/<component>/binary-<arch>/Packages.
+    #[default]
+    Debian,
+    /// Flat APT repository layout used by OBS: Packages at the repository root.
+    Flat,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct ProjectConfig {
     pub name: String,
@@ -186,6 +196,9 @@ pub enum SourceConfig {
     },
     DebRepo {
         url: String,
+        /// Repository metadata layout. Default: standard Debian dists/ layout.
+        #[serde(default)]
+        layout: DebRepoLayout,
         /// Debian suite(s) to fetch, e.g. "bookworm" or ["bookworm", "bullseye"].
         #[serde(
             default = "default_deb_suites",
@@ -204,10 +217,10 @@ pub enum SourceConfig {
             deserialize_with = "deserialize_string_or_list"
         )]
         architectures: Vec<String>,
-        /// Exact Debian package name to sync (Package: field). Required unless
-        /// filename_filter is set.
-        #[serde(default)]
-        package_filter: Option<String>,
+        /// Exact Debian package name(s) to sync (Package: field). Required unless
+        /// filename_filter is set. Accepts a single string or a list.
+        #[serde(default, deserialize_with = "deserialize_string_or_list")]
+        package_filter: Vec<String>,
         /// Optional glob filter applied to the Filename field in the Packages index.
         #[serde(default)]
         filename_filter: Option<String>,
@@ -517,6 +530,7 @@ source:
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         if let SourceConfig::DebRepo {
             url,
+            layout,
             suites,
             components,
             architectures,
@@ -527,10 +541,11 @@ source:
         } = p.source
         {
             assert_eq!(url, "https://nginx.org/packages/debian");
+            assert_eq!(layout, DebRepoLayout::Debian);
             assert_eq!(suites, vec!["bookworm"]);
             assert_eq!(components, vec!["main"]);
             assert_eq!(architectures, vec!["amd64"]);
-            assert_eq!(package_filter.as_deref(), Some("nginx"));
+            assert_eq!(package_filter, vec!["nginx"]);
             assert!(filename_filter.is_none());
             assert!(verify_gpg);
             assert!(gpg_key.is_none());
@@ -548,34 +563,58 @@ keep_versions: 2
 source:
   type: deb_repo
   url: "https://nginx.org/packages/debian"
+  layout: flat
   suites: [bookworm, bullseye]
   components: [main, nginx]
   architectures: [amd64, arm64]
-  package_filter: nginx
+  package_filter: [nginx, libnginx-mod-http-js]
   filename_filter: "nginx_*.deb"
   verify_gpg: false
   gpg_key: "https://nginx.org/keys/nginx_signing.key"
 "#;
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         if let SourceConfig::DebRepo {
+            layout,
             suites,
             components,
             architectures,
+            package_filter,
             filename_filter,
             verify_gpg,
             gpg_key,
             ..
         } = p.source
         {
+            assert_eq!(layout, DebRepoLayout::Flat);
             assert_eq!(suites, vec!["bookworm", "bullseye"]);
             assert_eq!(components, vec!["main", "nginx"]);
             assert_eq!(architectures, vec!["amd64", "arm64"]);
+            assert_eq!(package_filter, vec!["nginx", "libnginx-mod-http-js"]);
             assert_eq!(filename_filter.as_deref(), Some("nginx_*.deb"));
             assert!(!verify_gpg);
             assert_eq!(
                 gpg_key.as_deref(),
                 Some("https://nginx.org/keys/nginx_signing.key")
             );
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_deb_repo_empty_package_filter_is_allowed() {
+        let yaml = r#"
+name: repo
+repo_uid: r
+keep_versions: 1
+source:
+  type: deb_repo
+  url: "https://example.com"
+  package_filter: []
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::DebRepo { package_filter, .. } = p.source {
+            assert!(package_filter.is_empty());
         } else {
             panic!("wrong variant");
         }

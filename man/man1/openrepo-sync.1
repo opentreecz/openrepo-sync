@@ -66,6 +66,8 @@ schedule:
 .fi
 .PP
 The schedule block is used by \fB\-\-schedule\fR and Docker Compose. Supported interval units are \fBm\fR, \fBh\fR, and \fBd\fR, for example \fI30m\fR, \fI6h\fR, \fI24h\fR, or \fI1d\fR.
+.PP
+\fBdeb_repo\fR sources support \fIlayout: debian\fR (default) and \fIlayout: flat\fR for OBS-style repositories with \fIPackages\fR at the repository root. \fIpackage_filter\fR accepts either one package name or a list of package names.
 .SS Project file (projects/<name>.yaml)
 .PP
 Source type \fBgithub\fR \(em GitHub Releases:

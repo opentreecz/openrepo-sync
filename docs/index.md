@@ -59,7 +59,7 @@ openrepo-sync
 | Type | Description |
 |---|---|
 | [`github`](sources/#github) | GitHub Releases API — picks correct arch asset automatically |
-| [`deb_repo`](sources/#deb_repo) | Debian APT repository (Packages.gz index) |
+| [`deb_repo`](sources/#deb_repo) | Debian APT repository, including OBS flat layout (Packages.gz index) |
 | [`direct_url`](sources/#direct_url) | Fixed URL with version in the filename |
 | [`direct_url_latest`](sources/#direct_url_latest) | Fixed URL, version extracted from package metadata |
 | [`sourceforge`](sources/#sourceforge) | SourceForge file releases |

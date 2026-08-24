@@ -66,11 +66,12 @@ If no asset filename matches any arch entry, the first candidate is used as a fa
 
 ## `deb_repo` — Debian APT Repository {#deb_repo}
 
-Mirrors packages from any standard Debian (APT) repository by fetching and parsing the `Packages.gz` (or plain `Packages`) index.
+Mirrors packages from Debian (APT) repositories by fetching and parsing the `Packages.gz` (or plain `Packages`) index. Standard Debian `dists/` repositories and OBS-style flat APT repositories are supported.
 
 ```yaml
 source:
   type: deb_repo
+  layout: debian                         # debian (default) or flat
   url: https://nginx.org/packages/debian   # repository base URL
 
   # Suite(s) to mirror. Single string or list.
@@ -82,8 +83,9 @@ source:
   # Architecture(s). Single string or list.
   architectures: [amd64, arm64]    # default: amd64
 
-  # Filter by exact Debian package name (Package: field). Optional.
+  # Filter by exact Debian package name (Package: field). String or list. Optional.
   package_filter: nginx
+  # package_filter: [nginx, nginx-module-njs]
 
   # Filter by filename glob (applied to the Filename basename). Optional.
   filename_filter: "nginx_*.deb"
@@ -104,6 +106,40 @@ suites: [bookworm, bullseye]
 components: [main, contrib]
 architectures: [amd64, arm64]
 # → fetches 2 × 2 × 2 = 8 Packages indexes
+```
+
+### Flat OBS repositories
+
+Use `layout: flat` for repositories where `Packages` and `Packages.gz` are directly below the repository base URL instead of below `dists/<suite>/<component>/binary-<arch>/`. This layout is commonly used by openSUSE Build Service Debian repositories.
+
+```yaml
+source:
+  type: deb_repo
+  layout: flat
+  url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
+  package_filter: datovka
+  filename_filter: "datovka_*_amd64.deb"
+  verify_gpg: true
+  gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
+```
+
+For flat repositories, `suites`, `components`, and `architectures` are not used to build metadata URLs. Use `package_filter` and `filename_filter` to select the package names and architectures you want.
+
+### Multiple packages
+
+`package_filter` accepts a single package name or a list. When a list is used, packages matching any listed `Package:` field are included.
+
+```yaml
+package_filter:
+  - datovka
+  - libdatovka8
+```
+
+`filename_filter` is still applied after `package_filter`, so it can be used to restrict architecture or exclude debug packages:
+
+```yaml
+package_filter: [datovka, libdatovka8]
+filename_filter: "*_amd64.deb"
 ```
 
 ### GPG verification
@@ -129,10 +165,11 @@ Set `verify_gpg: false` to skip signature verification entirely. When disabled, 
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `url` | Yes | — | Repository base URL |
+| `layout` | No | `debian` | Repository metadata layout: `debian` or `flat` |
 | `suites` | No | `[bookworm]` | Suite(s) — single string or list |
 | `components` | No | `[main]` | Component(s) — single string or list |
 | `architectures` | No | `[amd64]` | Architecture(s) — single string or list |
-| `package_filter` | No | (all packages) | Exact `Package:` field match |
+| `package_filter` | No | (all packages) | Exact `Package:` field match — single string or list |
 | `filename_filter` | No | (all files) | Glob applied to the filename basename |
 | `verify_gpg` | No | `true` | Verify InRelease GPG signature |
 | `gpg_key` | No | — | GPG key URL or inline ASCII-armored key |

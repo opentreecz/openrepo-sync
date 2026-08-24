@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::Duration;
 
 /// Deserializes a YAML field that may be either a single string or a sequence
 /// of strings into `Vec<String>`. Also accepts missing/null (returns empty vec).
@@ -58,6 +59,8 @@ pub struct GlobalConfig {
     pub openrepo: OpenRepoConfig,
     #[serde(default = "default_download_dir")]
     pub download_dir: PathBuf,
+    #[serde(default)]
+    pub schedule: ScheduleConfig,
 }
 
 fn default_download_dir() -> PathBuf {
@@ -68,6 +71,61 @@ fn default_download_dir() -> PathBuf {
 pub struct OpenRepoConfig {
     pub api_url: String,
     pub api_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScheduleConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_schedule_interval")]
+    pub interval: String,
+    #[serde(default = "default_true")]
+    pub run_on_start: bool,
+}
+
+impl Default for ScheduleConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval: default_schedule_interval(),
+            run_on_start: true,
+        }
+    }
+}
+
+fn default_schedule_interval() -> String {
+    "24h".to_string()
+}
+
+impl ScheduleConfig {
+    pub fn interval_duration(&self) -> Result<Duration> {
+        parse_interval(&self.interval)
+    }
+}
+
+fn parse_interval(value: &str) -> Result<Duration> {
+    let value = value.trim();
+    if value.len() < 2 {
+        anyhow::bail!("Invalid schedule interval '{value}'; expected format like 30m, 6h, or 1d");
+    }
+
+    let (amount, unit) = value.split_at(value.len() - 1);
+    let amount: u64 = amount.parse().with_context(|| {
+        format!("Invalid schedule interval '{value}'; expected format like 30m, 6h, or 1d")
+    })?;
+
+    if amount == 0 {
+        anyhow::bail!("Invalid schedule interval '{value}'; interval must be greater than zero");
+    }
+
+    let seconds = match unit {
+        "m" => amount * 60,
+        "h" => amount * 60 * 60,
+        "d" => amount * 24 * 60 * 60,
+        _ => anyhow::bail!("Invalid schedule interval '{value}'; supported units are m, h, and d"),
+    };
+
+    Ok(Duration::from_secs(seconds))
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Default)]
@@ -224,6 +282,9 @@ openrepo:
         assert_eq!(cfg.openrepo.api_key, "tok123");
         // download_dir defaults to system temp + "openrepo-sync"
         assert!(cfg.download_dir.ends_with("openrepo-sync"));
+        assert!(cfg.schedule.enabled);
+        assert_eq!(cfg.schedule.interval, "24h");
+        assert!(cfg.schedule.run_on_start);
     }
 
     #[test]
@@ -239,6 +300,47 @@ download_dir: "/var/cache/openrepo"
             cfg.download_dir,
             std::path::PathBuf::from("/var/cache/openrepo")
         );
+    }
+
+    #[test]
+    fn global_config_explicit_schedule() {
+        let yaml = r#"
+openrepo:
+  api_url: "https://repo.example.com"
+  api_key: "tok"
+schedule:
+  enabled: true
+  interval: "6h"
+  run_on_start: false
+"#;
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.schedule.enabled);
+        assert_eq!(cfg.schedule.interval, "6h");
+        assert!(!cfg.schedule.run_on_start);
+    }
+
+    #[test]
+    fn schedule_interval_parses_supported_units() {
+        assert_eq!(parse_interval("30m").unwrap(), Duration::from_secs(30 * 60));
+        assert_eq!(
+            parse_interval("6h").unwrap(),
+            Duration::from_secs(6 * 60 * 60)
+        );
+        assert_eq!(
+            parse_interval("24h").unwrap(),
+            Duration::from_secs(24 * 60 * 60)
+        );
+        assert_eq!(
+            parse_interval("1d").unwrap(),
+            Duration::from_secs(24 * 60 * 60)
+        );
+    }
+
+    #[test]
+    fn schedule_interval_rejects_invalid_values() {
+        for value in ["", "0h", "tenm", "5s", "h"] {
+            assert!(parse_interval(value).is_err(), "{value} should be invalid");
+        }
     }
 
     // ── ProjectConfig deserialization ──────────────────────────────────────

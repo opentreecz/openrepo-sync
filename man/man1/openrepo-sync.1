@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH openrepo-sync 1  "openrepo-sync 0.1.27"
+.TH openrepo-sync 1  "openrepo-sync 0.1.33"
 .SH NAME
 openrepo\-sync \- Sync packages from upstream sources into an OpenRepo repository
 .SH SYNOPSIS
-\fBopenrepo\-sync\fR [\fB\-\-config\fR \fI<FILE>\fR] [\fB\-\-projects\fR \fI<DIR>\fR] [\fB\-\-project\fR \fI<NAME>\fR] [\fB\-\-dry\-run\fR] [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+\fBopenrepo\-sync\fR [\fB\-\-config\fR \fI<FILE>\fR] [\fB\-\-projects\fR \fI<DIR>\fR] [\fB\-\-project\fR \fI<NAME>\fR] [\fB\-\-dry\-run\fR] [\fB\-\-schedule\fR] [\fB\-v\fR|\fB\-\-verbose\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
 .SH DESCRIPTION
 \fBopenrepo\-sync\fR checks upstream sources (GitHub Releases, direct URLs, SourceForge) for new package versions, downloads them, uploads them to a self\-hosted OpenRepo instance, and prunes old releases beyond a configured keep count.
 .PP
@@ -39,6 +39,9 @@ When omitted, all projects in the \fB\-\-projects\fR directory are synced.
 Perform all read operations (version fetching, repository listing) but skip uploads and deletes.
 Intended actions are logged at INFO level with a \fI[dry\-run]\fR prefix.
 .TP
+\fB\-\-schedule\fR
+Run continuously using the schedule from the global configuration file.
+.TP
 \fB\-v\fR, \fB\-\-verbose\fR
 Enable debug\-level logging.  Equivalent to setting \fBRUST_LOG=debug\fR.
 In verbose mode the log output also includes the source module path for each line.
@@ -56,7 +59,13 @@ openrepo:
   api_url: "https://openrepo.example.com"
   api_key: "${OPENREPO_API_KEY}"   # supports ${ENV_VAR} expansion
 download_dir: "/tmp/openrepo-sync" # optional, defaults to system temp dir
+schedule:
+  enabled: true
+  interval: "24h"
+  run_on_start: true
 .fi
+.PP
+The schedule block is used by \fB\-\-schedule\fR and Docker Compose. Supported interval units are \fBm\fR, \fBh\fR, and \fBd\fR, for example \fI30m\fR, \fI6h\fR, \fI24h\fR, or \fI1d\fR.
 .SS Project file (projects/<name>.yaml)
 .PP
 Source type \fBgithub\fR \(em GitHub Releases:
@@ -169,6 +178,7 @@ Build the Docker image from source (no local Rust toolchain needed):
 .PP
 Run the locally\-built image:
 .nf
+  docker compose up -d
   docker compose run --rm openrepo-sync --dry-run
 .fi
 .SH FILES
@@ -181,4 +191,4 @@ Default directory for per\-project YAML files.
 .SH SEE ALSO
 \fBdpkg\-deb\fR(1), \fBrpm\fR(8)
 .SH VERSION
-v0.1.27
+v0.1.33

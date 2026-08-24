@@ -16,7 +16,7 @@ Configuration is split into two layers:
 
 | File | Purpose |
 |---|---|
-| `config.yaml` | Global settings: OpenRepo server URL, API key, download directory |
+| `config.yaml` | Global settings: OpenRepo server URL, API key, download directory, schedule |
 | `projects/*.yaml` | One file per tracked software package |
 
 ---
@@ -28,6 +28,10 @@ openrepo:
   api_url: "https://openrepo.example.com"
   api_key: "${OPENREPO_API_KEY}"   # ${VAR} is expanded from the environment
 download_dir: "/tmp/openrepo-sync" # optional; defaults to the system temp dir
+schedule:
+  enabled: true
+  interval: "24h"
+  run_on_start: true
 ```
 
 ### Fields
@@ -37,6 +41,25 @@ download_dir: "/tmp/openrepo-sync" # optional; defaults to the system temp dir
 | `openrepo.api_url` | Yes | — | Base URL of your OpenRepo instance |
 | `openrepo.api_key` | Yes | — | API token. Supports `${ENV_VAR}` expansion |
 | `download_dir` | No | system temp dir | Directory for temporary package downloads |
+
+### Schedule
+
+The `schedule` block is used when the CLI is started with `--schedule`, including the default `docker compose up -d` setup. Normal one-shot commands ignore it.
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `schedule.enabled` | No | `true` | Enables scheduled sync passes while running with `--schedule` |
+| `schedule.interval` | No | `24h` | Delay between sync passes. Supports `m`, `h`, and `d`, such as `30m`, `6h`, `24h`, or `1d` |
+| `schedule.run_on_start` | No | `true` | Run the first sync immediately when the scheduler starts |
+
+Example: run every six hours, starting immediately:
+
+```yaml
+schedule:
+  enabled: true
+  interval: "6h"
+  run_on_start: true
+```
 
 ### API Key
 

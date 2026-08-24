@@ -109,12 +109,25 @@ source:
 source:
   type: deb_repo
   url: https://nginx.org/packages/debian
+  layout: debian                            # default: debian; use flat for OBS-style repos
   suites: bookworm                            # default: [bookworm]
   components: nginx                           # default: [main]
   architectures: [amd64, arm64]               # default: [amd64]
-  package_filter: nginx                       # optional; omit to sync all packages
+  package_filter: nginx                       # optional; string or list
+  # package_filter: [nginx, nginx-module-njs]
   verify_gpg: true                            # default: true; set to false to skip GPG verification
   gpg_key: https://nginx.org/keys/nginx_signing.key
+```
+
+Flat OBS-style APT repositories place `Packages` at the repository root:
+
+```yaml
+source:
+  type: deb_repo
+  layout: flat
+  url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
+  package_filter: datovka
+  filename_filter: "datovka_*_amd64.deb"
 ```
 
 ### `direct_url`

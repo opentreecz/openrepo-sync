@@ -154,19 +154,34 @@ Mirrors packages directly from any standard Debian repository (Packages.gz / Pac
 ```yaml
 source:
   type: deb_repo
+  layout: debian                            # debian (default) or flat
   url: https://nginx.org/packages/debian   # repository base URL
   suites: bookworm                         # single string or list
   components: nginx                        # single string or list
   architectures: [amd64, arm64]            # single string or list
 
-  package_filter: nginx                    # exact Package: field match (optional)
+  package_filter: nginx                    # exact Package: field match, string or list
+  # package_filter: [nginx, nginx-module-njs]
   filename_filter: "nginx_*.deb"           # glob on filename (optional)
 
   verify_gpg: true                         # verify InRelease signature (default: true)
   gpg_key: https://nginx.org/keys/nginx_signing.key  # URL or inline ASCII-armored key
 ```
 
-**Defaults:** `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
+**Defaults:** `layout: debian`, `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
+
+OBS-style flat APT repositories are supported with `layout: flat`:
+
+```yaml
+source:
+  type: deb_repo
+  layout: flat
+  url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
+  package_filter: datovka
+  filename_filter: "datovka_*_amd64.deb"
+  verify_gpg: true
+  gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
+```
 
 ### `direct_url` — Static URL
 

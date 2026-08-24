@@ -3,15 +3,17 @@ use flate2::read::GzDecoder;
 use std::io::Read;
 use tracing::debug;
 
+use crate::config::DebRepoLayout;
 use crate::models::{PackageVersion, RemotePackage};
 
 #[derive(Debug)]
 pub struct DebRepoSource {
     pub url: String,
+    pub layout: DebRepoLayout,
     pub suites: Vec<String>,
     pub components: Vec<String>,
     pub architectures: Vec<String>,
-    pub package_filter: Option<String>,
+    pub package_filter: Vec<String>,
     pub filename_filter: Option<glob::Pattern>,
     pub verify_gpg: bool,
     pub gpg_key: Option<String>,
@@ -22,21 +24,22 @@ impl DebRepoSource {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         url: &str,
+        layout: DebRepoLayout,
         suites: Vec<String>,
         components: Vec<String>,
         architectures: Vec<String>,
-        package_filter: Option<&str>,
+        package_filter: Vec<String>,
         filename_filter: Option<&str>,
         verify_gpg: bool,
         gpg_key: Option<&str>,
     ) -> Result<Self> {
-        if suites.is_empty() {
+        if layout == DebRepoLayout::Debian && suites.is_empty() {
             bail!("deb_repo: suites must not be empty");
         }
-        if components.is_empty() {
+        if layout == DebRepoLayout::Debian && components.is_empty() {
             bail!("deb_repo: components must not be empty");
         }
-        if architectures.is_empty() {
+        if layout == DebRepoLayout::Debian && architectures.is_empty() {
             bail!("deb_repo: architectures must not be empty");
         }
         let pattern = filename_filter
@@ -47,10 +50,11 @@ impl DebRepoSource {
             .build()?;
         Ok(Self {
             url: url.trim_end_matches('/').to_string(),
+            layout,
             suites,
             components,
             architectures,
-            package_filter: package_filter.map(str::to_string),
+            package_filter,
             filename_filter: pattern,
             verify_gpg,
             gpg_key: gpg_key.map(str::to_string),
@@ -66,6 +70,20 @@ impl DebRepoSource {
     }
 
     pub async fn fetch_latest(&self, n: usize) -> Result<Vec<RemotePackage>> {
+        if self.layout == DebRepoLayout::Flat {
+            if self.verify_gpg {
+                self.verify_flat_gpg()
+                    .await
+                    .context("GPG verification failed for flat repository")?;
+            }
+
+            let mut packages = self.fetch_flat_packages().await?;
+            packages.sort_by(|a, b| b.version.cmp(&a.version));
+            packages.dedup_by(|a, b| a.filename == b.filename);
+            packages.truncate(n);
+            return Ok(packages);
+        }
+
         // Optionally verify GPG for each suite before fetching package indexes.
         if self.verify_gpg {
             for suite in &self.suites {
@@ -96,6 +114,20 @@ impl DebRepoSource {
         all.dedup_by(|a, b| a.filename == b.filename);
         all.truncate(n);
         Ok(all)
+    }
+
+    async fn fetch_flat_packages(&self) -> Result<Vec<RemotePackage>> {
+        let base = &self.url;
+        let text = if let Ok(t) = self.fetch_index_gz(&format!("{base}/Packages.gz")).await {
+            t
+        } else {
+            self.fetch_index_plain(&format!("{base}/Packages"))
+                .await
+                .with_context(|| format!("Could not fetch flat Packages index from {base}"))?
+        };
+
+        debug!("Fetched flat Packages index ({} bytes)", text.len());
+        Ok(self.parse_packages(&text))
     }
 
     async fn fetch_packages_for(
@@ -187,8 +219,8 @@ impl DebRepoSource {
                 continue;
             };
 
-            // Apply package_filter (exact name match).
-            if self.package_filter.as_deref().is_some_and(|f| name != f) {
+            // Apply package_filter (exact name match against any configured name).
+            if !self.package_filter.is_empty() && !self.package_filter.iter().any(|f| f == name) {
                 continue;
             }
 
@@ -218,9 +250,21 @@ impl DebRepoSource {
     /// Requires the `gpg` binary to be available. Skips gracefully if no
     /// gpg_key is configured.
     async fn verify_suite_gpg(&self, suite: &str) -> Result<()> {
+        self.verify_gpg_at(
+            &format!("{}/dists/{suite}", self.url),
+            &format!("suite '{suite}'"),
+        )
+        .await
+    }
+
+    async fn verify_flat_gpg(&self) -> Result<()> {
+        self.verify_gpg_at(&self.url, "flat repository").await
+    }
+
+    async fn verify_gpg_at(&self, release_base_url: &str, label: &str) -> Result<()> {
         let Some(ref key_source) = self.gpg_key else {
             // verify_gpg is true but no key configured — warn and skip.
-            debug!("GPG verification enabled but no gpg_key set for suite '{suite}'; skipping");
+            debug!("GPG verification enabled but no gpg_key set for {label}; skipping");
             return Ok(());
         };
 
@@ -256,7 +300,7 @@ impl DebRepoSource {
         };
 
         // Fetch InRelease (clearsigned).
-        let inrelease_url = format!("{}/dists/{suite}/InRelease", self.url);
+        let inrelease_url = format!("{release_base_url}/InRelease");
         let inrelease = self
             .client
             .get(&inrelease_url)
@@ -313,11 +357,11 @@ impl DebRepoSource {
             .context("Failed to run gpg --verify")?;
 
         if verify_out.status.success() {
-            debug!("GPG signature verified for suite '{suite}'");
+            debug!("GPG signature verified for {label}");
             Ok(())
         } else {
             bail!(
-                "GPG signature verification failed for suite '{suite}': {}",
+                "GPG signature verification failed for {label}: {}",
                 String::from_utf8_lossy(&verify_out.stderr)
             )
         }
@@ -331,10 +375,26 @@ mod tests {
     fn source(url: &str) -> DebRepoSource {
         DebRepoSource::new(
             url,
+            DebRepoLayout::Debian,
             vec!["bookworm".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
+            vec![],
             None,
+            false,
+            None,
+        )
+        .unwrap()
+    }
+
+    fn flat_source(url: &str) -> DebRepoSource {
+        DebRepoSource::new(
+            url,
+            DebRepoLayout::Flat,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
             None,
             false,
             None,
@@ -401,7 +461,7 @@ mod tests {
     #[test]
     fn package_filter_matches_exact_name() {
         let mut s = source("https://example.com");
-        s.package_filter = Some("nginx".to_string());
+        s.package_filter = vec!["nginx".to_string()];
         let text = packages_text(&[
             ("nginx", "1.24.0-1", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
             ("curl", "7.88.1-1", "pool/curl/curl_7.88.1-1_amd64.deb"),
@@ -414,9 +474,28 @@ mod tests {
     #[test]
     fn package_filter_no_match_returns_empty() {
         let mut s = source("https://example.com");
-        s.package_filter = Some("apache2".to_string());
+        s.package_filter = vec!["apache2".to_string()];
         let text = packages_text(&[("nginx", "1.24.0-1", "pool/nginx/nginx_1.24.0-1_amd64.deb")]);
         assert!(s.parse_packages(&text).is_empty());
+    }
+
+    #[test]
+    fn package_filter_matches_any_configured_name() {
+        let mut s = source("https://example.com");
+        s.package_filter = vec!["nginx".to_string(), "curl".to_string()];
+        let text = packages_text(&[
+            ("nginx", "1.24.0-1", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
+            ("curl", "7.88.1-1", "pool/curl/curl_7.88.1-1_amd64.deb"),
+            (
+                "apache2",
+                "2.4.0-1",
+                "pool/apache2/apache2_2.4.0-1_amd64.deb",
+            ),
+        ]);
+        let pkgs = s.parse_packages(&text);
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].filename, "nginx_1.24.0-1_amd64.deb");
+        assert_eq!(pkgs[1].filename, "curl_7.88.1-1_amd64.deb");
     }
 
     #[test]
@@ -456,6 +535,21 @@ mod tests {
     }
 
     #[test]
+    fn flat_obs_download_url_constructed_from_repo_base_and_relative_filename() {
+        let s = flat_source(
+            "https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/",
+        );
+        let text = packages_text(&[("datovka", "4.29.4-1", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let pkgs = s.parse_packages(&text);
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "datovka_4.29.4-1_amd64.deb");
+        assert_eq!(
+            pkgs[0].download_url,
+            "https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/amd64/datovka_4.29.4-1_amd64.deb"
+        );
+    }
+
+    #[test]
     fn trailing_slash_on_url_not_doubled() {
         let s = source("https://example.com/repo/");
         let text = packages_text(&[("p", "1.0", "pool/p_1.0_amd64.deb")]);
@@ -467,10 +561,11 @@ mod tests {
     fn invalid_filename_filter_is_rejected() {
         let err = DebRepoSource::new(
             "https://example.com",
+            DebRepoLayout::Debian,
             vec!["bookworm".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
-            None,
+            vec![],
             Some("[bad"),
             false,
             None,
@@ -483,10 +578,11 @@ mod tests {
     fn empty_suites_rejected() {
         let err = DebRepoSource::new(
             "https://example.com",
+            DebRepoLayout::Debian,
             vec![],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
-            None,
+            vec![],
             None,
             false,
             None,
@@ -550,6 +646,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fetch_latest_flat_layout_reads_root_packages_index() {
+        let body = packages_text(&[("datovka", "4.29.4-1", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"),
+            MockResponse::json(200, &body),
+        ]);
+        let s = flat_source("placeholder").with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "datovka_4.29.4-1_amd64.deb");
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /Packages.gz "));
+        assert!(requests[1].starts_with("GET /Packages "));
+    }
+
+    #[tokio::test]
+    async fn fetch_latest_debian_layout_keeps_dists_path() {
+        let body = packages_text(&[("nginx", "1.24.0-1", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"),
+            MockResponse::json(200, &body),
+        ]);
+        let s = source("placeholder").with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /dists/bookworm/main/binary-amd64/Packages.gz "));
+        assert!(requests[1].starts_with("GET /dists/bookworm/main/binary-amd64/Packages "));
+    }
+
+    #[tokio::test]
     async fn fetch_latest_decompresses_gz_index() {
         use flate2::Compression;
         use flate2::write::GzEncoder;
@@ -583,7 +714,7 @@ mod tests {
             MockResponse::json(200, &body),
         ]);
         let mut s = source("placeholder").with_url(&server.url);
-        s.package_filter = Some("nginx".to_string());
+        s.package_filter = vec!["nginx".to_string()];
 
         let pkgs = s.fetch_latest(10).await.unwrap();
         assert_eq!(pkgs.len(), 1);
@@ -630,10 +761,11 @@ mod tests {
     fn empty_components_rejected() {
         let err = DebRepoSource::new(
             "https://example.com",
+            DebRepoLayout::Debian,
             vec!["bookworm".to_string()],
             vec![],
             vec!["amd64".to_string()],
-            None,
+            vec![],
             None,
             false,
             None,
@@ -646,10 +778,11 @@ mod tests {
     fn empty_architectures_rejected() {
         let err = DebRepoSource::new(
             "https://example.com",
+            DebRepoLayout::Debian,
             vec!["bookworm".to_string()],
             vec!["main".to_string()],
             vec![],
-            None,
+            vec![],
             None,
             false,
             None,
@@ -663,10 +796,26 @@ mod tests {
     fn source_with_gpg(url: &str, gpg_key: Option<&str>) -> DebRepoSource {
         DebRepoSource::new(
             url,
+            DebRepoLayout::Debian,
             vec!["stable".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
+            vec![],
             None,
+            true,
+            gpg_key,
+        )
+        .unwrap()
+    }
+
+    fn flat_source_with_gpg(url: &str, gpg_key: Option<&str>) -> DebRepoSource {
+        DebRepoSource::new(
+            url,
+            DebRepoLayout::Flat,
+            vec![],
+            vec![],
+            vec![],
+            vec![],
             None,
             true,
             gpg_key,
@@ -815,6 +964,33 @@ mod tests {
         let pkgs = s.fetch_latest(10).await.unwrap();
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].filename, "nginx_1.24.0-1_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_flat_layout_uses_root_inrelease() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        let (pubkey, gnupghome) = generate_test_gpg_key();
+        let signed_inrelease = sign_inrelease("Codename: Debian_13\n", gnupghome.path());
+        let body = packages_text(&[("datovka", "4.29.4-1", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let server = MockServer::start(vec![
+            MockResponse::json(200, &signed_inrelease),
+            MockResponse::json(404, "not found"),
+            MockResponse::json(200, &body),
+        ]);
+        let s = flat_source_with_gpg("placeholder", Some(&pubkey)).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "datovka_4.29.4-1_amd64.deb");
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /InRelease "));
+        assert!(requests[1].starts_with("GET /Packages.gz "));
+        assert!(requests[2].starts_with("GET /Packages "));
     }
 
     #[tokio::test]

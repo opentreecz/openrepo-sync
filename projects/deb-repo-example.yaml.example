@@ -1,9 +1,9 @@
 # Example project file — "deb_repo" source type.
 #
 # Mirrors packages from an external Debian (APT) repository into OpenRepo.
-# The source fetches the Packages index (Packages.gz or plain Packages) for
-# each combination of suite/component/architecture, filters by package name
-# and/or filename glob, and uploads the N newest versions.
+# The default `debian` layout fetches the Packages index for each
+# suite/component/architecture combination. The `flat` layout supports OBS-style
+# repositories where Packages/Packages.gz live at the repository root.
 #
 # To activate: copy this file into projects/ under its own name, without
 # the .example suffix, e.g.:
@@ -17,6 +17,7 @@ on_conflict: skip          # skip, overwrite, or error (default) when package al
 
 source:
   type: deb_repo
+  layout: debian                         # debian (default) or flat
   url: https://nginx.org/packages/debian    # Debian repository base URL
 
   # Suite(s) to mirror. Accepts a single string or a list.
@@ -37,9 +38,11 @@ source:
   # Default: amd64
   architectures: [amd64, arm64]
 
-  # Exact Debian package name to sync (matches the Package: field in the index).
-  # Optional — omit to sync all packages found (subject to filename_filter).
+  # Exact Debian package name(s) to sync (matches the Package: field in the index).
+  # Accepts a single string or a list. Optional — omit or set [] to sync all
+  # packages found (subject to filename_filter).
   package_filter: nginx
+  # package_filter: [nginx, nginx-module-njs]
 
   # Optional glob filter applied to the filename from the Packages index.
   # Useful to select a specific package variant when package_filter alone is
@@ -65,3 +68,18 @@ source:
   #   -----BEGIN PGP PUBLIC KEY BLOCK-----
   #   ...
   #   -----END PGP PUBLIC KEY BLOCK-----
+
+# Flat OBS repository example:
+#
+# name: datovka
+# repo_uid: debian-stable
+# keep_versions: 3
+# on_conflict: skip
+# source:
+#   type: deb_repo
+#   layout: flat
+#   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
+#   package_filter: datovka
+#   filename_filter: "datovka_*_amd64.deb"
+#   verify_gpg: true
+#   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key

@@ -193,6 +193,7 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
         }
         SourceConfig::DebRepo {
             url,
+            layout,
             suites,
             components,
             architectures,
@@ -203,10 +204,11 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
         } => {
             let source = DebRepoSource::new(
                 url,
+                layout.clone(),
                 suites.clone(),
                 components.clone(),
                 architectures.clone(),
-                package_filter.as_deref(),
+                package_filter.clone(),
                 filename_filter.as_deref(),
                 *verify_gpg,
                 gpg_key.as_deref(),

@@ -110,7 +110,8 @@ jobs:
             --out Lcov \
             --out Html \
             --output-dir coverage/ \
-            --timeout 120
+            --timeout 120 \
+            --fail-under 80
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v7
@@ -126,3 +127,23 @@ jobs:
           name: coverage-report
           path: coverage/
           retention-days: 30
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@1.85.0
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: msrv-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: msrv-
+
+      - name: cargo check
+        run: cargo check --all-targets

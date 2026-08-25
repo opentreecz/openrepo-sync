@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 /// Deserializes a YAML field that may be either a single string or a sequence
@@ -269,12 +271,15 @@ impl ProjectConfig {
     }
 }
 
+/// Regex for expanding ${ENV_VAR} patterns in config values.
+static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").unwrap());
+
 fn expand_env_vars(s: &str) -> String {
-    let re = regex::Regex::new(r"\$\{([^}]+)\}").unwrap();
-    re.replace_all(s, |caps: &regex::Captures| {
-        std::env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
-    })
-    .into_owned()
+    ENV_VAR_RE
+        .replace_all(s, |caps: &regex::Captures| {
+            std::env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -354,6 +359,23 @@ schedule:
         for value in ["", "0h", "tenm", "5s", "h"] {
             assert!(parse_interval(value).is_err(), "{value} should be invalid");
         }
+    }
+
+    #[test]
+    fn schedule_config_enabled_false() {
+        let yaml = r#"
+openrepo:
+  api_url: "https://repo.example.com"
+  api_key: "tok"
+schedule:
+  enabled: false
+  interval: "1h"
+"#;
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!cfg.schedule.enabled);
+        assert_eq!(cfg.schedule.interval, "1h");
+        // run_on_start defaults to true when omitted
+        assert!(cfg.schedule.run_on_start);
     }
 
     // ── ProjectConfig deserialization ──────────────────────────────────────

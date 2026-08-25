@@ -59,7 +59,7 @@ sudo rpm -i openrepo-sync-*-1.armv7hl.rpm
 
 ## From Source
 
-Requires Rust 1.70 or newer.
+Requires Rust 1.85 or newer (edition 2024).
 
 ```sh
 git clone https://github.com/opentreecz/openrepo-sync

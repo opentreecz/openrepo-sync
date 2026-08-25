@@ -22,18 +22,22 @@ An HTML report is published here automatically on every successful CI run.
 
 ## Current Results
 
-| File | Covered | Total | Coverage |
-|---|---|---|---|
-| `src/config.rs` | 36 | 37 | **97%** |
-| `src/models.rs` | 15 | 15 | **100%** |
-| `src/repo_client.rs` | 86 | 87 | **99%** |
-| `src/sources/direct_url.rs` | 74 | 76 | **97%** |
-| `src/sources/github.rs` | 67 | 68 | **99%** |
-| `src/sources/sourceforge.rs` | 50 | 50 | **100%** |
-| `src/sync.rs` | 88 | 106 | **83%** |
-| `src/version.rs` | 23 | 25 | **92%** |
-| `src/main.rs` | 36 | 63 | **57%** |
-| **Total** | **475** | **527** | **~90%** |
+> **Note:** This table is a point-in-time snapshot. Live coverage is tracked by
+> [Codecov](https://codecov.io/gh/opentreecz/openrepo-sync) and updated on every CI run.
+
+| File | Tests | Description |
+|---|---|---|
+| `src/config.rs` | 29 | Config deserialization, env-var expansion, schedule parsing |
+| `src/models.rs` | 12 | PackageVersion parsing, ordering, Display |
+| `src/repo_client.rs` | 23 | HTTP client: list/upload/delete/whoami, pagination, polling |
+| `src/sources/deb_repo.rs` | 34 | Packages parsing, GPG verification, multi-suite, flat layout |
+| `src/sources/direct_url.rs` | 14 | Static URL version, LATEST download, filename resolution |
+| `src/sources/github.rs` | 20 | Asset collection, arch_filter, pagination, draft/prerelease |
+| `src/sources/sourceforge.rs` | 12 | HTML scraping, filename filter, folder URL |
+| `src/sync.rs` | 15 | Full sync cycle: upload, skip, conflict, prune, dry-run |
+| `src/version.rs` | 11 | Filename version extraction, dpkg-deb integration |
+| `src/main.rs` | 12 | CLI parsing, project filter, integration against mock |
+| **Total** | **182** | |
 
 ---
 

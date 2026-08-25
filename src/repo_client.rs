@@ -12,8 +12,15 @@ use crate::version::extract_version_from_filename;
 
 /// Maximum number of poll attempts when waiting for an async upload task to
 /// complete on the server.  Each attempt sleeps [`POLL_INTERVAL`].
+#[cfg(not(test))]
 const UPLOAD_POLL_MAX_ATTEMPTS: u32 = 150; // 150 × 2 s = 5 minutes
+#[cfg(test)]
+const UPLOAD_POLL_MAX_ATTEMPTS: u32 = 3; // Reduced for fast test execution
+
+#[cfg(not(test))]
 const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+#[cfg(test)]
+const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
 
 pub struct RepoClient {
     base_url: String,
@@ -608,5 +615,57 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("403"));
         assert!(msg.contains("forbidden"));
+    }
+
+    // ── upload poll timeout and failure ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn upload_poll_timeout_fails() {
+        // Mock: upload returns 202, then all poll attempts return "processing"
+        let processing = r#"{"status":"processing","error_message":""}"#;
+        let mut responses = vec![
+            // Upload response (202 Accepted)
+            MockResponse::json(202, r#"{"task_id":"task-timeout-test"}"#),
+        ];
+        // Add UPLOAD_POLL_MAX_ATTEMPTS poll responses (all "processing")
+        for _ in 0..UPLOAD_POLL_MAX_ATTEMPTS {
+            responses.push(MockResponse::json(200, processing));
+        }
+        let server = MockServer::start(responses);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg_path = tmp.path().join("test.deb");
+        std::fs::write(&pkg_path, b"fake-package").unwrap();
+
+        let err = client
+            .upload_package("repo", &pkg_path, false)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("timed out"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_poll_task_failed_with_message() {
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"task-fail-test"}"#),
+            MockResponse::json(200, r#"{"status":"failed","error_message":"disk full"}"#),
+        ]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+
+        let tmp = tempfile::tempdir().unwrap();
+        let pkg_path = tmp.path().join("test.deb");
+        std::fs::write(&pkg_path, b"fake-package").unwrap();
+
+        let err = client
+            .upload_package("repo", &pkg_path, false)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("failed"), "unexpected error: {msg}");
+        assert!(msg.contains("disk full"), "unexpected error: {msg}");
     }
 }

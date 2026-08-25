@@ -361,6 +361,23 @@ schedule:
         }
     }
 
+    #[test]
+    fn schedule_config_enabled_false() {
+        let yaml = r#"
+openrepo:
+  api_url: "https://repo.example.com"
+  api_key: "tok"
+schedule:
+  enabled: false
+  interval: "1h"
+"#;
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!cfg.schedule.enabled);
+        assert_eq!(cfg.schedule.interval, "1h");
+        // run_on_start defaults to true when omitted
+        assert!(cfg.schedule.run_on_start);
+    }
+
     // ── ProjectConfig deserialization ──────────────────────────────────────
 
     #[test]

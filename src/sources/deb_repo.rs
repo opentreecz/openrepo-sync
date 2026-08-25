@@ -1078,4 +1078,68 @@ mod tests {
             "unexpected error: {err}"
         );
     }
+
+    // ── Multi-suite and edge case tests ────────────────────────────────────
+
+    #[tokio::test]
+    async fn fetch_latest_multiple_suites_merged() {
+        // Source with 2 suites × 1 component × 1 arch = 2 index fetches
+        let s = DebRepoSource::new(
+            "placeholder",
+            DebRepoLayout::Debian,
+            vec!["bookworm".to_string(), "bullseye".to_string()],
+            vec!["main".to_string()],
+            vec!["amd64".to_string()],
+            vec![],
+            None,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let body1 = packages_text(&[("nginx", "1.26.0-1", "pool/nginx_1.26.0-1_amd64.deb")]);
+        let body2 = packages_text(&[("nginx", "1.24.0-1", "pool/nginx_1.24.0-1_amd64.deb")]);
+
+        let server = MockServer::start(vec![
+            // bookworm: Packages.gz 404, Packages OK
+            MockResponse::json(404, "not found"),
+            MockResponse::json(200, &body1),
+            // bullseye: Packages.gz 404, Packages OK
+            MockResponse::json(404, "not found"),
+            MockResponse::json(200, &body2),
+        ]);
+        let s = s.with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 2);
+        // Sorted newest first
+        assert_eq!(pkgs[0].filename, "nginx_1.26.0-1_amd64.deb");
+        assert_eq!(pkgs[1].filename, "nginx_1.24.0-1_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_dearmor_failure_gives_clear_error() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        // Provide invalid key data (not a valid GPG key) — gpg --dearmor will fail
+        let invalid_key = "this is not a valid gpg key at all";
+
+        // Mock: InRelease returns valid content (needed to get to the gpg stage)
+        let server = MockServer::start(vec![
+            MockResponse::json(200, "Suite: stable\n"), // InRelease
+        ]);
+
+        let s = source_with_gpg("placeholder", Some(invalid_key)).with_url(&server.url);
+
+        let err = s.fetch_latest(10).await.unwrap_err();
+        assert!(
+            err.to_string().contains("GPG")
+                || err.to_string().contains("dearmor")
+                || err.to_string().contains("verification failed"),
+            "unexpected error: {err}"
+        );
+    }
 }

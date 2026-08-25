@@ -1,6 +1,8 @@
 use anyhow::{Context, Result};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::sync::LazyLock;
 use std::time::Duration;
 
 /// Deserializes a YAML field that may be either a single string or a sequence
@@ -269,12 +271,15 @@ impl ProjectConfig {
     }
 }
 
+/// Regex for expanding ${ENV_VAR} patterns in config values.
+static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").unwrap());
+
 fn expand_env_vars(s: &str) -> String {
-    let re = regex::Regex::new(r"\$\{([^}]+)\}").unwrap();
-    re.replace_all(s, |caps: &regex::Captures| {
-        std::env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
-    })
-    .into_owned()
+    ENV_VAR_RE
+        .replace_all(s, |caps: &regex::Captures| {
+            std::env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
+        })
+        .into_owned()
 }
 
 #[cfg(test)]

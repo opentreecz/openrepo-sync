@@ -1,6 +1,13 @@
 use crate::models::PackageVersion;
 use anyhow::{Context, Result, bail};
+use regex::Regex;
 use std::path::Path;
+use std::sync::LazyLock;
+
+/// Regex for extracting semver-like versions from filenames.
+/// Matches: name-1.2.3, name_1.2.3_amd64, name-v1.2.3-rc1
+static VERSION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[-_]v?(\d+\.\d+[\d.\-+a-zA-Z]*)").unwrap());
 
 pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
     // Strip known package/archive extensions before matching so the extension
@@ -14,10 +21,8 @@ pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
         .trim_end_matches(".zip")
         .trim_end_matches(".tgz");
 
-    // Match semver-like versions including pre-release/build metadata:
-    //   name-1.2.3, name_1.2.3_amd64, name-v1.2.3-rc1
-    let re = regex::Regex::new(r"[-_]v?(\d+\.\d+[\d.\-+a-zA-Z]*)").unwrap();
-    re.captures(stripped)
+    VERSION_RE
+        .captures(stripped)
         .and_then(|c| c.get(1))
         .map(|m| PackageVersion::parse(m.as_str()))
 }

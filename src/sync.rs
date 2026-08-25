@@ -9,7 +9,7 @@ use crate::models::{RemotePackage, SyncAction, SyncResult};
 use crate::repo_client::RepoClient;
 use crate::sources::{
     deb_repo::DebRepoSource, direct_url::DirectUrlSource, github::GithubSource,
-    sourceforge::SourceforgeSource,
+    rpm_repo::RpmRepoSource, sourceforge::SourceforgeSource,
 };
 
 pub async fn sync_project(
@@ -212,6 +212,24 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
                 filename_filter.as_deref(),
                 *verify_gpg,
                 gpg_key.as_deref(),
+            )?;
+            source.fetch_latest(project.keep_versions).await
+        }
+        SourceConfig::RpmRepo {
+            url,
+            package_filter,
+            filename_filter,
+            verify_gpg,
+            gpg_key,
+            architectures,
+        } => {
+            let source = RpmRepoSource::new(
+                url,
+                package_filter.clone(),
+                filename_filter.as_deref(),
+                *verify_gpg,
+                gpg_key.as_deref(),
+                architectures.clone(),
             )?;
             source.fetch_latest(project.keep_versions).await
         }

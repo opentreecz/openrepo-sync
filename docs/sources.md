@@ -176,6 +176,64 @@ Set `verify_gpg: false` to skip signature verification entirely. When disabled, 
 
 ---
 
+## `rpm_repo` — RPM (YUM/DNF) Repository {#rpm_repo}
+
+Mirrors packages from any standard RPM repository by fetching and parsing the `repodata/repomd.xml` metadata index and the primary package list (`primary.xml` or `primary.sqlite`).
+
+```yaml
+source:
+  type: rpm_repo
+  url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
+
+  architectures: [x86_64, noarch]   # default: [x86_64, noarch]
+  package_filter: nginx              # optional; exact name match
+  filename_filter: "nginx-*.rpm"     # optional; glob on filename
+  verify_gpg: true                   # default: true
+  gpg_key: https://www.redhat.com/security/team/key/
+```
+
+### Metadata formats
+
+The source automatically detects and supports the following formats (determined from `repomd.xml`):
+
+| Format | Compression | Description |
+|---|---|---|
+| `primary.xml.gz` | gzip | Streaming XML parser (most common) |
+| `primary.xml.xz` | XZ/LZMA | Streaming XML parser (Fedora, EPEL) |
+| `primary.sqlite.gz` | gzip | SQLite database (createrepo_c) — **preferred** |
+| `primary.sqlite.xz` | XZ/LZMA | SQLite database (createrepo_c) — **preferred** |
+| `primary.xml` | none | Streaming XML parser (rare) |
+
+When both `primary_db` (SQLite) and `primary` (XML) are available in `repomd.xml`, SQLite is preferred for faster filtered queries on large repositories.
+
+### GPG verification
+
+When `verify_gpg: true` (the default), the `repodata/repomd.xml.asc` detached signature is fetched and verified against the provided GPG key before any packages are downloaded.
+
+Set `verify_gpg: false` if the repository does not provide a signed `repomd.xml.asc`.
+
+### Version format
+
+RPM versions include epoch when non-zero:
+
+| Epoch | Format | Example |
+|---|---|---|
+| 0 (default) | `{ver}-{rel}` | `1.24.0-1.el9` |
+| > 0 | `{epoch}:{ver}-{rel}` | `2:1.24.0-1.el9` |
+
+### Fields
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `url` | Yes | — | Repository base URL (parent of `repodata/`) |
+| `architectures` | No | `[x86_64, noarch]` | Architecture(s) — single string or list |
+| `package_filter` | No | (all packages) | Exact `<name>` match — single string or list |
+| `filename_filter` | No | (all files) | Glob applied to the RPM filename |
+| `verify_gpg` | No | `true` | Verify repomd.xml GPG signature |
+| `gpg_key` | No | — | GPG key URL or inline ASCII-armored key |
+
+---
+
 ## `direct_url` — Static URL {#direct_url}
 
 A fixed URL where the filename already contains the version string.

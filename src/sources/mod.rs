@@ -4,6 +4,7 @@ use anyhow::Result;
 pub mod deb_repo;
 pub mod direct_url;
 pub mod github;
+pub mod rpm_repo;
 pub mod sourceforge;
 
 #[allow(dead_code)]

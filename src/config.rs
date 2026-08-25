@@ -52,6 +52,10 @@ fn default_deb_architectures() -> Vec<String> {
     vec!["amd64".to_string()]
 }
 
+fn default_rpm_architectures() -> Vec<String> {
+    vec!["x86_64".to_string(), "noarch".to_string()]
+}
+
 fn default_true() -> bool {
     true
 }
@@ -234,6 +238,27 @@ pub enum SourceConfig {
         /// Required when verify_gpg is true.
         #[serde(default)]
         gpg_key: Option<String>,
+    },
+    RpmRepo {
+        url: String,
+        /// Exact RPM package name(s) to sync (matches <name> in primary metadata).
+        #[serde(default, deserialize_with = "deserialize_string_or_list")]
+        package_filter: Vec<String>,
+        /// Optional glob filter applied to the RPM filename.
+        #[serde(default)]
+        filename_filter: Option<String>,
+        /// Verify the repomd.xml GPG signature. Default: true.
+        #[serde(default = "default_true")]
+        verify_gpg: bool,
+        /// GPG public key for signature verification.
+        #[serde(default)]
+        gpg_key: Option<String>,
+        /// Architecture(s) to include. Default: [x86_64, noarch].
+        #[serde(
+            default = "default_rpm_architectures",
+            deserialize_with = "deserialize_string_or_list"
+        )]
+        architectures: Vec<String>,
     },
 }
 

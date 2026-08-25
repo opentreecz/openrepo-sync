@@ -12,6 +12,7 @@
 name: rpi-imager                 # identifier used in log output
 repo_uid: deb  # target repository UID in OpenRepo
 keep_versions: 3           # keep the 3 newest versions; older ones are pruned
+on_conflict: skip          # skip if package already exists
 
 source:
   type: github

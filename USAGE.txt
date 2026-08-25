@@ -32,7 +32,7 @@ QUICK START
 INSTALLATION
 ------------
 
-Build from source (requires Rust 1.70+):
+Build from source (requires Rust 1.85+ / edition 2024):
 
      cargo build --release
      install -m755 target/release/openrepo-sync /usr/local/bin/
@@ -203,6 +203,8 @@ COMMAND-LINE REFERENCE
   --config  <FILE>     Global config file. Default: config.yaml
   --projects <DIR>     Directory of per-project YAML files. Default: projects/
   --project <NAME>     Sync only the named project (matched by the name field).
+  --schedule           Run as a long-lived scheduler (loop with configurable interval).
+                       Uses the schedule block in config.yaml for interval and run_on_start.
   --dry-run            Preview mode: fetch and compare, but do not upload or delete.
   -v, --verbose        Enable debug logging (same as RUST_LOG=debug).
   -h, --help           Show usage summary.
@@ -280,7 +282,7 @@ All API calls use token-based authentication:
 Endpoints used by openrepo-sync:
 
   GET  /api/whoami                              Verify credentials; returns username.
-  GET  /api/repos/<repo_uid>/packages/          List packages (paginated).
+  GET  /api/<repo_uid>/packages/                List packages (paginated).
   POST /api/<repo_uid>/upload/                  Upload a package (multipart/form-data).
                                                   Fields: package_file (binary), overwrite (optional, "1").
   DELETE /api/<repo_uid>/pkg/<package_uid>/     Delete a specific package.

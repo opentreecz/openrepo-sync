@@ -12,6 +12,8 @@ name: sfpkg
 repo_uid: debian-sf
 keep_versions: 2
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
+# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
+#                           # set to false to skip verification for this project
 
 source:
   type: sourceforge

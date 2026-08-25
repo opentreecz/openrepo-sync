@@ -12,7 +12,9 @@
 [![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://opentreecz.github.io/openrepo-sync/coverage/)
 [![Docker](https://img.shields.io/badge/docker-ghcr.io-blue)](https://github.com/opentreecz/openrepo-sync/pkgs/container/openrepo-sync)
 
-A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources. It fetches new package versions from GitHub Releases, external Debian (APT) repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
+A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources. It fetches new package versions from GitHub Releases, external Debian (APT) repositories, RPM (YUM/DNF) repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
+
+> **Requires:** A running [OpenRepo](https://github.com/opentreecz/openrepo) server instance as the target repository. OpenRepo provides Debian APT and RPM YUM/DNF repository hosting with PGP signing, retention policies, and a web management interface. See the [OpenRepo documentation](https://opentreecz.github.io/openrepo/) for server setup.
 
 **[Full documentation → opentreecz.github.io/openrepo-sync](https://opentreecz.github.io/openrepo-sync/)**
 

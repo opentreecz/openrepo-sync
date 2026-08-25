@@ -23,6 +23,8 @@ Configuration is split into two layers:
 
 ## Global Config (`config.yaml`)
 
+> The `api_url` and `api_key` connect to your [OpenRepo](https://github.com/opentreecz/openrepo) server instance. See the [OpenRepo getting started guide](https://opentreecz.github.io/openrepo/getting-started/) for server setup instructions.
+
 ```yaml
 openrepo:
   api_url: "https://openrepo.example.com"

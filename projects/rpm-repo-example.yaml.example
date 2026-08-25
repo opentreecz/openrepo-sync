@@ -1,0 +1,60 @@
+# Example project file — "rpm_repo" source type.
+#
+# Mirrors packages from an external RPM (YUM/DNF) repository into OpenRepo.
+# The source fetches repodata/repomd.xml to locate the primary metadata,
+# parses primary.xml (or primary.sqlite) to discover packages, filters by
+# name/arch/filename, and uploads the N newest versions.
+#
+# Supports:
+#   - primary.xml.gz / primary.xml.xz (streaming XML parser)
+#   - primary.sqlite.gz / primary.sqlite.xz (SQLite queries, preferred)
+#   - GPG signature verification of repomd.xml.asc
+#
+# To activate: copy this file into projects/ under its own name, without
+# the .example suffix, e.g.:
+#   cp projects/rpm-repo-example.yaml.example projects/epel-nginx.yaml
+# Full field reference: docs/sources.md
+
+name: epel-nginx           # identifier used in log output and --project NAME
+repo_uid: rpm-stable       # target repository UID in OpenRepo
+keep_versions: 3           # keep the 3 newest versions; older ones are pruned
+on_conflict: skip          # skip, overwrite, or error (default) when package already exists
+
+source:
+  type: rpm_repo
+  url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
+
+  # Architecture(s) to include. Accepts a single string or a list.
+  #   architectures: x86_64
+  #   architectures: [x86_64, noarch]
+  # Default: [x86_64, noarch]
+  architectures: [x86_64, noarch]
+
+  # Exact RPM package name(s) to sync (matches <name> in primary metadata).
+  # Accepts a single string or a list. Optional — omit to sync all packages.
+  package_filter: nginx
+  # package_filter: [nginx, nginx-mod-stream]
+
+  # Optional glob filter applied to the RPM filename.
+  # Useful to select a specific package variant when package_filter alone is
+  # not precise enough.
+  # filename_filter: "nginx-1*.rpm"
+
+  # Verify the repomd.xml GPG signature before downloading any packages.
+  # Requires the `gpg` binary to be installed. Default: true.
+  # Set to false to skip GPG verification entirely — useful when the upstream
+  # repository does not provide a signed repomd.xml.asc file.
+  verify_gpg: true
+  # verify_gpg: false    # ← disable GPG signature verification
+
+  # GPG public key used for signature verification. Either:
+  #   - A URL (http:// or https://) — fetched at sync time
+  #   - An inline ASCII-armored key block
+  # Required when verify_gpg is true. Ignored when verify_gpg is false.
+  gpg_key: https://www.redhat.com/security/team/key/
+
+  # Inline ASCII-armored key example (alternative to URL):
+  # gpg_key: |
+  #   -----BEGIN PGP PUBLIC KEY BLOCK-----
+  #   ...
+  #   -----END PGP PUBLIC KEY BLOCK-----

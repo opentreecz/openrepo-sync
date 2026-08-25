@@ -183,6 +183,22 @@ source:
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
 ```
 
+### `rpm_repo` — RPM (YUM/DNF) Repository
+
+Mirrors packages from any standard RPM repository (repomd.xml + primary.xml/sqlite).
+
+```yaml
+source:
+  type: rpm_repo
+  url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
+  architectures: [x86_64, noarch]    # default: [x86_64, noarch]
+  package_filter: nginx              # optional; exact name match
+  verify_gpg: true                   # default: true
+  gpg_key: https://www.redhat.com/security/team/key/
+```
+
+**Defaults:** `architectures: [x86_64, noarch]`, `verify_gpg: true`. Supports `primary.xml.gz`, `primary.xml.xz`, and `primary.sqlite` metadata formats.
+
 ### `direct_url` — Static URL
 
 ```yaml

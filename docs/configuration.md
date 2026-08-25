@@ -130,6 +130,17 @@ source:
   filename_filter: "datovka_*_amd64.deb"
 ```
 
+### `rpm_repo`
+```yaml
+source:
+  type: rpm_repo
+  url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
+  architectures: [x86_64, noarch]         # default: [x86_64, noarch]
+  package_filter: nginx                   # optional; exact name match
+  verify_gpg: true                        # default: true
+  gpg_key: https://www.redhat.com/security/team/key/
+```
+
 ### `direct_url`
 ```yaml
 source:

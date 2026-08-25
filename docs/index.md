@@ -13,7 +13,9 @@ title: openrepo-sync
 
 A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opentreecz/openrepo) package repository in sync with upstream software sources.
 
-**openrepo-sync** fetches new package versions from GitHub Releases, external Debian APT repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
+> **Server:** openrepo-sync requires a running [OpenRepo](https://github.com/opentreecz/openrepo) instance ([documentation](https://opentreecz.github.io/openrepo/)) as the target package repository. OpenRepo hosts .deb, .rpm, and generic packages with APT/YUM metadata generation, PGP signing, and a web management interface.
+
+**openrepo-sync** fetches new package versions from GitHub Releases, external Debian APT repositories, RPM (YUM/DNF) repositories, direct download URLs, and SourceForge, uploads them to OpenRepo, and prunes releases older than a configured threshold.
 
 ---
 

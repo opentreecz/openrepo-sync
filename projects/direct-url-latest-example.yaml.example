@@ -18,6 +18,8 @@ name: mypkg-latest
 repo_uid: debian-custom
 keep_versions: 1
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
+# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
+#                           # set to false to skip verification for this project
 
 source:
   type: direct_url_latest

@@ -27,6 +27,14 @@ openrepo:
 # even when running in Docker.
 # download_dir: "/tmp/openrepo-sync"
 
+# Verify that the version inside uploaded package files (.deb/.rpm) matches
+# the version reported by the upstream source. When a mismatch is detected,
+# the package metadata version is used as authoritative (it matches what the
+# OpenRepo server will store).
+# Requires dpkg-deb (for .deb) or rpm (for .rpm) to be installed.
+# Can be overridden per-project in the project YAML file. Default: true.
+verify_version: true
+
 # Optional scheduler settings used when the container is started with
 # `openrepo-sync --schedule` or via `docker compose up -d`.
 # Supported interval units: m = minutes, h = hours, d = days.

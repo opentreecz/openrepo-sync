@@ -14,6 +14,8 @@ name: nginx                # identifier used in log output and --project NAME
 repo_uid: debian-stable    # target repository UID in OpenRepo
 keep_versions: 3           # keep the 3 newest versions; older ones are pruned
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
+# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
+#                           # set to false to skip verification for this project
 
 source:
   type: deb_repo

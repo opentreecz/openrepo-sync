@@ -110,7 +110,11 @@ impl DebRepoSource {
         Ok(self.limit_packages_per_group(all, n))
     }
 
-    fn limit_packages_per_group(&self, packages: Vec<RemotePackage>, n: usize) -> Vec<RemotePackage> {
+    fn limit_packages_per_group(
+        &self,
+        packages: Vec<RemotePackage>,
+        n: usize,
+    ) -> Vec<RemotePackage> {
         let mut grouped: BTreeMap<(String, String), Vec<RemotePackage>> = BTreeMap::new();
 
         for pkg in packages {
@@ -248,7 +252,10 @@ impl DebRepoSource {
 
             if !self.architectures.is_empty()
                 && arch != "all"
-                && !self.architectures.iter().any(|configured| configured == arch)
+                && !self
+                    .architectures
+                    .iter()
+                    .any(|configured| configured == arch)
             {
                 continue;
             }
@@ -473,8 +480,18 @@ mod tests {
     fn parse_packages_multiple_stanzas() {
         let s = source("https://example.com");
         let text = packages_text(&[
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
-            ("curl", "7.88.1-1", "amd64", "pool/curl/curl_7.88.1-1_amd64.deb"),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx/nginx_1.24.0-1_amd64.deb",
+            ),
+            (
+                "curl",
+                "7.88.1-1",
+                "amd64",
+                "pool/curl/curl_7.88.1-1_amd64.deb",
+            ),
         ]);
         let pkgs = s.parse_packages(&text);
         assert_eq!(pkgs.len(), 2);
@@ -500,8 +517,18 @@ mod tests {
         let mut s = source("https://example.com");
         s.package_filter = vec!["nginx".to_string()];
         let text = packages_text(&[
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
-            ("curl", "7.88.1-1", "amd64", "pool/curl/curl_7.88.1-1_amd64.deb"),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx/nginx_1.24.0-1_amd64.deb",
+            ),
+            (
+                "curl",
+                "7.88.1-1",
+                "amd64",
+                "pool/curl/curl_7.88.1-1_amd64.deb",
+            ),
         ]);
         let pkgs = s.parse_packages(&text);
         assert_eq!(pkgs.len(), 1);
@@ -512,7 +539,12 @@ mod tests {
     fn package_filter_no_match_returns_empty() {
         let mut s = source("https://example.com");
         s.package_filter = vec!["apache2".to_string()];
-        let text = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb")]);
+        let text = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx/nginx_1.24.0-1_amd64.deb",
+        )]);
         assert!(s.parse_packages(&text).is_empty());
     }
 
@@ -521,8 +553,18 @@ mod tests {
         let mut s = source("https://example.com");
         s.package_filter = vec!["nginx".to_string(), "curl".to_string()];
         let text = packages_text(&[
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
-            ("curl", "7.88.1-1", "amd64", "pool/curl/curl_7.88.1-1_amd64.deb"),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx/nginx_1.24.0-1_amd64.deb",
+            ),
+            (
+                "curl",
+                "7.88.1-1",
+                "amd64",
+                "pool/curl/curl_7.88.1-1_amd64.deb",
+            ),
             (
                 "apache2",
                 "2.4.0-1",
@@ -541,7 +583,12 @@ mod tests {
         let mut s = source("https://example.com");
         s.filename_filter = Some(glob::Pattern::new("nginx_*.deb").unwrap());
         let text = packages_text(&[
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb"),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx/nginx_1.24.0-1_amd64.deb",
+            ),
             (
                 "nginx-extras",
                 "1.24.0-1",
@@ -558,14 +605,24 @@ mod tests {
     fn filename_filter_rejects_nonmatching() {
         let mut s = source("https://example.com");
         s.filename_filter = Some(glob::Pattern::new("curl_*.deb").unwrap());
-        let text = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx/nginx_1.24.0-1_amd64.deb")]);
+        let text = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx/nginx_1.24.0-1_amd64.deb",
+        )]);
         assert!(s.parse_packages(&text).is_empty());
     }
 
     #[test]
     fn download_url_constructed_from_repo_base_and_filename_field() {
         let s = source("https://apt.example.com/debian/");
-        let text = packages_text(&[("tool", "1.0.0", "amd64", "pool/main/t/tool/tool_1.0.0_amd64.deb")]);
+        let text = packages_text(&[(
+            "tool",
+            "1.0.0",
+            "amd64",
+            "pool/main/t/tool/tool_1.0.0_amd64.deb",
+        )]);
         let pkgs = s.parse_packages(&text);
         assert_eq!(
             pkgs[0].download_url,
@@ -578,7 +635,12 @@ mod tests {
         let s = flat_source(
             "https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/",
         );
-        let text = packages_text(&[("datovka", "4.29.4-1", "amd64", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let text = packages_text(&[(
+            "datovka",
+            "4.29.4-1",
+            "amd64",
+            "amd64/datovka_4.29.4-1_amd64.deb",
+        )]);
         let pkgs = s.parse_packages(&text);
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].filename, "datovka_4.29.4-1_amd64.deb");
@@ -660,7 +722,10 @@ mod tests {
 
         assert_eq!(pkgs.len(), 2);
         assert!(pkgs.iter().any(|pkg| pkg.filename == "tool_2.0.0_all.deb"));
-        assert!(pkgs.iter().any(|pkg| pkg.filename == "tool_1.0.0_amd64.deb"));
+        assert!(
+            pkgs.iter()
+                .any(|pkg| pkg.filename == "tool_1.0.0_amd64.deb")
+        );
     }
 
     #[test]
@@ -668,9 +733,24 @@ mod tests {
         let mut s = flat_source("https://example.com");
         s.architectures = vec!["amd64".to_string()];
         let text = packages_text(&[
-            ("datovka", "4.29.4-1", "amd64", "amd64/datovka_4.29.4-1_amd64.deb"),
-            ("datovka", "4.29.4-1", "arm64", "arm64/datovka_4.29.4-1_arm64.deb"),
-            ("datovka", "4.29.4-1", "armhf", "armhf/datovka_4.29.4-1_armhf.deb"),
+            (
+                "datovka",
+                "4.29.4-1",
+                "amd64",
+                "amd64/datovka_4.29.4-1_amd64.deb",
+            ),
+            (
+                "datovka",
+                "4.29.4-1",
+                "arm64",
+                "arm64/datovka_4.29.4-1_arm64.deb",
+            ),
+            (
+                "datovka",
+                "4.29.4-1",
+                "armhf",
+                "armhf/datovka_4.29.4-1_armhf.deb",
+            ),
         ]);
 
         let pkgs = s.parse_packages(&text);
@@ -743,7 +823,12 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_returns_packages_from_plain_index() {
         // Packages.gz returns 404, Packages succeeds.
-        let body = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"), // Packages.gz attempt
             MockResponse::json(200, &body),       // Packages fallback
@@ -757,7 +842,12 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_latest_flat_layout_reads_root_packages_index() {
-        let body = packages_text(&[("datovka", "4.29.4-1", "amd64", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "datovka",
+            "4.29.4-1",
+            "amd64",
+            "amd64/datovka_4.29.4-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"),
             MockResponse::json(200, &body),
@@ -775,7 +865,12 @@ mod tests {
 
     #[tokio::test]
     async fn fetch_latest_debian_layout_keeps_dists_path() {
-        let body = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"),
             MockResponse::json(200, &body),
@@ -816,7 +911,12 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_filters_by_package_name() {
         let body = packages_text(&[
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb"),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx_1.24.0-1_amd64.deb",
+            ),
             ("curl", "7.88.1-1", "amd64", "pool/curl_7.88.1-1_amd64.deb"),
         ]);
         let server = MockServer::start(vec![
@@ -834,9 +934,24 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_truncates_to_n() {
         let body = packages_text(&[
-            ("nginx", "1.26.0-1", "amd64", "pool/nginx_1.26.0-1_amd64.deb"),
-            ("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb"),
-            ("nginx", "1.22.0-1", "amd64", "pool/nginx_1.22.0-1_amd64.deb"),
+            (
+                "nginx",
+                "1.26.0-1",
+                "amd64",
+                "pool/nginx_1.26.0-1_amd64.deb",
+            ),
+            (
+                "nginx",
+                "1.24.0-1",
+                "amd64",
+                "pool/nginx_1.24.0-1_amd64.deb",
+            ),
+            (
+                "nginx",
+                "1.22.0-1",
+                "amd64",
+                "pool/nginx_1.22.0-1_amd64.deb",
+            ),
         ]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"),
@@ -853,9 +968,24 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_keeps_n_per_package_and_architecture_group() {
         let body = packages_text(&[
-            ("datovka", "4.29.5-1", "amd64", "pool/datovka_4.29.5-1_amd64.deb"),
-            ("datovka", "4.29.4-1", "amd64", "pool/datovka_4.29.4-1_amd64.deb"),
-            ("datovka", "4.29.3-1", "amd64", "pool/datovka_4.29.3-1_amd64.deb"),
+            (
+                "datovka",
+                "4.29.5-1",
+                "amd64",
+                "pool/datovka_4.29.5-1_amd64.deb",
+            ),
+            (
+                "datovka",
+                "4.29.4-1",
+                "amd64",
+                "pool/datovka_4.29.4-1_amd64.deb",
+            ),
+            (
+                "datovka",
+                "4.29.3-1",
+                "amd64",
+                "pool/datovka_4.29.3-1_amd64.deb",
+            ),
             (
                 "libdatovka8",
                 "4.29.5-1",
@@ -908,9 +1038,24 @@ mod tests {
         let pkgs = s.fetch_latest(2).await.unwrap();
 
         assert_eq!(pkgs.len(), 6);
-        assert_eq!(pkgs.iter().filter(|p| p.package_name.as_deref() == Some("datovka")).count(), 2);
-        assert_eq!(pkgs.iter().filter(|p| p.package_name.as_deref() == Some("libdatovka8")).count(), 2);
-        assert_eq!(pkgs.iter().filter(|p| p.package_name.as_deref() == Some("libdatovka0")).count(), 2);
+        assert_eq!(
+            pkgs.iter()
+                .filter(|p| p.package_name.as_deref() == Some("datovka"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            pkgs.iter()
+                .filter(|p| p.package_name.as_deref() == Some("libdatovka8"))
+                .count(),
+            2
+        );
+        assert_eq!(
+            pkgs.iter()
+                .filter(|p| p.package_name.as_deref() == Some("libdatovka0"))
+                .count(),
+            2
+        );
         assert!(!pkgs.iter().any(|p| p.filename.contains("4.29.3-1")));
     }
 
@@ -1001,7 +1146,12 @@ mod tests {
     async fn verify_gpg_false_skips_verification() {
         // verify_gpg: false should succeed even if the server returns nothing
         // useful (no InRelease endpoint needed).
-        let body = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"), // Packages.gz
             MockResponse::json(200, &body),       // Packages
@@ -1016,7 +1166,12 @@ mod tests {
     #[tokio::test]
     async fn gpg_verify_skips_when_no_key_configured() {
         // verify_gpg: true but gpg_key: None → should skip GPG and proceed
-        let body = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(404, "not found"), // Packages.gz
             MockResponse::json(200, &body),       // Packages
@@ -1127,7 +1282,12 @@ mod tests {
         let signed_inrelease = sign_inrelease(inrelease_content, gnupghome.path());
 
         // Mock server: serves InRelease (for GPG check), then Packages index
-        let body = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(200, &signed_inrelease), // InRelease
             MockResponse::json(404, "not found"),       // Packages.gz
@@ -1149,7 +1309,12 @@ mod tests {
 
         let (pubkey, gnupghome) = generate_test_gpg_key();
         let signed_inrelease = sign_inrelease("Codename: Debian_13\n", gnupghome.path());
-        let body = packages_text(&[("datovka", "4.29.4-1", "amd64", "amd64/datovka_4.29.4-1_amd64.deb")]);
+        let body = packages_text(&[(
+            "datovka",
+            "4.29.4-1",
+            "amd64",
+            "amd64/datovka_4.29.4-1_amd64.deb",
+        )]);
         let server = MockServer::start(vec![
             MockResponse::json(200, &signed_inrelease),
             MockResponse::json(404, "not found"),
@@ -1271,8 +1436,18 @@ mod tests {
         )
         .unwrap();
 
-        let body1 = packages_text(&[("nginx", "1.26.0-1", "amd64", "pool/nginx_1.26.0-1_amd64.deb")]);
-        let body2 = packages_text(&[("nginx", "1.24.0-1", "amd64", "pool/nginx_1.24.0-1_amd64.deb")]);
+        let body1 = packages_text(&[(
+            "nginx",
+            "1.26.0-1",
+            "amd64",
+            "pool/nginx_1.26.0-1_amd64.deb",
+        )]);
+        let body2 = packages_text(&[(
+            "nginx",
+            "1.24.0-1",
+            "amd64",
+            "pool/nginx_1.24.0-1_amd64.deb",
+        )]);
 
         let server = MockServer::start(vec![
             // bookworm: Packages.gz 404, Packages OK

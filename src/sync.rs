@@ -160,7 +160,10 @@ fn managed_groups(
     remote_packages: &[RemotePackage],
     repo_packages: &[crate::models::RepoPackage],
 ) -> HashSet<(String, String)> {
-    let remote_filenames: HashSet<&str> = remote_packages.iter().map(|pkg| pkg.filename.as_str()).collect();
+    let remote_filenames: HashSet<&str> = remote_packages
+        .iter()
+        .map(|pkg| pkg.filename.as_str())
+        .collect();
     let mut groups = HashSet::new();
 
     for remote in remote_packages {
@@ -517,7 +520,12 @@ mod tests {
                 ("keep-mid", "tool", "amd64", "tool_2.0.0_amd64.deb"),
                 ("drop-old", "tool", "amd64", "tool_1.0.0_amd64.deb"),
                 ("arm-keep", "tool", "arm64", "tool_3.0.0_arm64.deb"),
-                ("manual", "manual-package", "amd64", "manual_9.9.9_amd64.deb"),
+                (
+                    "manual",
+                    "manual-package",
+                    "amd64",
+                    "manual_9.9.9_amd64.deb",
+                ),
                 (
                     "other-project",
                     "other-tool",
@@ -530,11 +538,18 @@ mod tests {
         let client = RepoClient::new(&server.url, "k").unwrap();
         let dir = tempfile::tempdir().unwrap();
 
-        let p = project("https://example.com/tool_3.0.0_amd64.deb", 2, OnConflict::Error);
+        let p = project(
+            "https://example.com/tool_3.0.0_amd64.deb",
+            2,
+            OnConflict::Error,
+        );
         let result = sync_project(&p, &client, dir.path(), false).await;
 
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
-        assert!(matches!(result.actions[1], SyncAction::Pruned { removed_count: 1 }));
+        assert!(matches!(
+            result.actions[1],
+            SyncAction::Pruned { removed_count: 1 }
+        ));
 
         let requests = server.requests();
         assert_eq!(requests.len(), 2);
@@ -543,19 +558,22 @@ mod tests {
 
     #[test]
     fn prune_candidates_enforces_keep_versions_per_architecture() {
-        let remote_packages = vec![RemotePackage {
-            filename: "tool_3.0.0_amd64.deb".to_string(),
-            version: PackageVersion::parse("3.0.0"),
-            download_url: "https://example.com/tool_3.0.0_amd64.deb".to_string(),
-            package_name: Some("tool".to_string()),
-            architecture: Some("amd64".to_string()),
-        }, RemotePackage {
-            filename: "tool_3.0.0_arm64.deb".to_string(),
-            version: PackageVersion::parse("3.0.0"),
-            download_url: "https://example.com/tool_3.0.0_arm64.deb".to_string(),
-            package_name: Some("tool".to_string()),
-            architecture: Some("arm64".to_string()),
-        }];
+        let remote_packages = vec![
+            RemotePackage {
+                filename: "tool_3.0.0_amd64.deb".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+                download_url: "https://example.com/tool_3.0.0_amd64.deb".to_string(),
+                package_name: Some("tool".to_string()),
+                architecture: Some("amd64".to_string()),
+            },
+            RemotePackage {
+                filename: "tool_3.0.0_arm64.deb".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+                download_url: "https://example.com/tool_3.0.0_arm64.deb".to_string(),
+                package_name: Some("tool".to_string()),
+                architecture: Some("arm64".to_string()),
+            },
+        ];
         let initial_packages = vec![
             crate::models::RepoPackage {
                 package_uid: "amd64-new".to_string(),

@@ -130,14 +130,15 @@ fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> String {
         .headers()
         .get("content-disposition")
         .map(|cd| cd.to_str())
-        && let Some(name) = CONTENT_DISPOSITION_RE.captures(cd_str).and_then(|caps| {
+    {
+        if let Some(name) = CONTENT_DISPOSITION_RE.captures(cd_str).and_then(|caps| {
             caps.get(1)
                 .or_else(|| caps.get(2))
                 .map(|m| m.as_str().trim().to_string())
                 .filter(|n| !n.is_empty())
-        })
-    {
-        return name;
+        }) {
+            return name;
+        }
     }
 
     // Try final URL after redirects

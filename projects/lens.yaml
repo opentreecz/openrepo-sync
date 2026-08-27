@@ -5,5 +5,11 @@ keep_versions: 1
 on_conflict: skip
 
 source:
-  type: direct_url_latest
-  url: "https://downloads.k8slens.dev/ide/Lens-latest.amd64.deb"
+  type: deb_repo
+  url: https://downloads.k8slens.dev/apt/debian
+  suites: stable
+  components: main
+  architectures: amd64
+  package_filter: lens
+  verify_gpg: true
+  gpg_key: https://downloads.k8slens.dev/keys/gpg

@@ -48,6 +48,7 @@ pub struct RemotePackage {
     pub filename: String,
     pub version: PackageVersion,
     pub download_url: String,
+    pub sha256: Option<String>,
     pub package_name: Option<String>,
     pub architecture: Option<String>,
 }

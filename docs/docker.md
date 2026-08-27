@@ -80,8 +80,8 @@ Pick the template matching your upstream source:
 |---|---|---|
 | `github-example.yaml.example` | `github` | Upstream publishes `.deb`/`.rpm` on GitHub Releases |
 | `deb-repo-example.yaml.example` | `deb_repo` | Mirror from a Debian APT repository |
-| `direct-url-example.yaml.example` | `direct_url` | Fixed URL, filename contains the version |
-| `direct-url-latest-example.yaml.example` | `direct_url_latest` | Fixed "LATEST" URL, version only in package metadata |
+| `direct-url-example.yaml.example` | `direct_url` | Fixed URL, filename contains the version; optional `sha256` verification |
+| `direct-url-latest-example.yaml.example` | `direct_url_latest` | Fixed "LATEST" URL, version only in package metadata; optional `sha256` verification |
 | `sourceforge-example.yaml.example` | `sourceforge` | Upstream publishes via SourceForge file releases |
 
 ```sh

@@ -189,9 +189,13 @@ pub enum SourceConfig {
     },
     DirectUrl {
         url: String,
+        #[serde(default)]
+        sha256: Option<String>,
     },
     DirectUrlLatest {
         url: String,
+        #[serde(default)]
+        sha256: Option<String>,
     },
     Sourceforge {
         project: String,
@@ -433,9 +437,16 @@ keep_versions: 1
 source:
   type: direct_url
   url: "https://example.com/tool-1.0.0.deb"
+  sha256: "41d522fe958869de4f1f81aa2abce75b0c794212196c5690837de10b9cf26209"
 "#;
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
-        assert!(matches!(p.source, SourceConfig::DirectUrl { .. }));
+        assert!(matches!(
+            p.source,
+            SourceConfig::DirectUrl {
+                sha256: Some(_),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -447,9 +458,16 @@ keep_versions: 1
 source:
   type: direct_url_latest
   url: "https://example.com/tool-LATEST.deb"
+  sha256: "41d522fe958869de4f1f81aa2abce75b0c794212196c5690837de10b9cf26209"
 "#;
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
-        assert!(matches!(p.source, SourceConfig::DirectUrlLatest { .. }));
+        assert!(matches!(
+            p.source,
+            SourceConfig::DirectUrlLatest {
+                sha256: Some(_),
+                ..
+            }
+        ));
     }
 
     #[test]

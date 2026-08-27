@@ -1,0 +1,13 @@
+---
+name: drawio
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: github
+  owner: jgraph
+  repo: drawio-desktop
+  asset_filter: "*amd64*.deb"
+  arch_filter: amd64
+  prerelease: false

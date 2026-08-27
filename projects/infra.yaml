@@ -1,0 +1,9 @@
+---
+name: infra
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://download.infra.app/linux/infra_latest_amd64.deb"

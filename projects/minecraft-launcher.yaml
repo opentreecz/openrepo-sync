@@ -1,0 +1,9 @@
+---
+name: minecraft-launcher
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://launcher.mojang.com/download/Minecraft.deb"

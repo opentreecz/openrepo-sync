@@ -1,0 +1,15 @@
+---
+name: signal-desktop
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://updates.signal.org/desktop/apt
+  suites: xenial
+  components: main
+  architectures: amd64
+  package_filter: signal-desktop
+  verify_gpg: true
+  gpg_key: https://updates.signal.org/desktop/apt/keys.asc

@@ -104,6 +104,7 @@ impl SourceforgeSource {
                     filename,
                     version,
                     download_url,
+                    sha256: None,
                     package_name: None,
                     architecture: None,
                 });

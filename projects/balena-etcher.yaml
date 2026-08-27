@@ -1,0 +1,13 @@
+---
+name: balena-etcher
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: github
+  owner: balena-io
+  repo: etcher
+  asset_filter: "*_amd64.deb"
+  arch_filter: amd64
+  prerelease: false

@@ -1,0 +1,13 @@
+---
+name: rustdesk
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: github
+  owner: rustdesk
+  repo: rustdesk
+  asset_filter: "*.deb"
+  arch_filter: amd64
+  prerelease: false

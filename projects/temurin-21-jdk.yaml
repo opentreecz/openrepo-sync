@@ -1,0 +1,15 @@
+---
+name: temurin-21-jdk
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://packages.adoptium.net/artifactory/deb
+  suites: bookworm
+  components: main
+  architectures: amd64
+  package_filter: temurin-21-jdk
+  verify_gpg: true
+  gpg_key: https://packages.adoptium.net/artifactory/api/gpg/key/public

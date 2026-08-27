@@ -1,0 +1,9 @@
+---
+name: parsec
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://builds.parsec.app/package/parsec-linux.deb"

@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use tracing::{debug, info, warn};
@@ -223,12 +224,12 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
             )?;
             source.fetch_latest(project.keep_versions).await
         }
-        SourceConfig::DirectUrl { url } => {
-            let source = DirectUrlSource::new(url, false)?;
+        SourceConfig::DirectUrl { url, sha256 } => {
+            let source = DirectUrlSource::new(url, false, sha256.as_deref())?;
             source.fetch_latest(1).await
         }
-        SourceConfig::DirectUrlLatest { url } => {
-            let source = DirectUrlSource::new(url, true)?;
+        SourceConfig::DirectUrlLatest { url, sha256 } => {
+            let source = DirectUrlSource::new(url, true, sha256.as_deref())?;
             source.fetch_latest(1).await
         }
         SourceConfig::Sourceforge {
@@ -298,6 +299,7 @@ async fn download_package(
                 path.display()
             );
         }
+        verify_sha256_path(&path, remote.sha256.as_deref())?;
         return Ok(path);
     }
 
@@ -320,6 +322,7 @@ async fn download_package(
         .context("Download request error")?;
 
     let bytes = resp.bytes().await.context("Failed to read download body")?;
+    verify_sha256_bytes(bytes.as_ref(), remote.sha256.as_deref())?;
     tokio::fs::write(&dest, &bytes)
         .await
         .with_context(|| format!("Failed to write {}", dest.display()))?;
@@ -327,11 +330,34 @@ async fn download_package(
     Ok(dest)
 }
 
+fn verify_sha256_path(path: &Path, expected: Option<&str>) -> Result<()> {
+    if let Some(expected) = expected {
+        let bytes = std::fs::read(path).with_context(|| {
+            format!("Failed to read {} for SHA-256 verification", path.display())
+        })?;
+        verify_sha256_bytes(&bytes, Some(expected))
+            .with_context(|| format!("SHA-256 verification failed for {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn verify_sha256_bytes(bytes: &[u8], expected: Option<&str>) -> Result<()> {
+    if let Some(expected) = expected {
+        let actual = format!("{:x}", Sha256::digest(bytes));
+        let expected = expected.trim().to_ascii_lowercase();
+        if actual != expected {
+            bail!("SHA-256 mismatch: expected {}, got {}", expected, actual);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::models::PackageVersion;
     use crate::test_util::{MockResponse, MockServer};
+    use sha2::{Digest, Sha256};
 
     fn project(url: &str, keep_versions: usize, on_conflict: OnConflict) -> ProjectConfig {
         ProjectConfig {
@@ -341,6 +367,7 @@ mod tests {
             on_conflict,
             source: SourceConfig::DirectUrl {
                 url: url.to_string(),
+                sha256: None,
             },
         }
     }
@@ -503,6 +530,7 @@ mod tests {
             filename: "tool-1.0.0-amd64.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: "https://example.com/tool-1.0.0-amd64.deb".to_string(),
+            sha256: None,
             package_name: Some("tool".to_string()),
             architecture: Some("amd64".to_string()),
         }];
@@ -563,6 +591,7 @@ mod tests {
                 filename: "tool_3.0.0_amd64.deb".to_string(),
                 version: PackageVersion::parse("3.0.0"),
                 download_url: "https://example.com/tool_3.0.0_amd64.deb".to_string(),
+                sha256: None,
                 package_name: Some("tool".to_string()),
                 architecture: Some("amd64".to_string()),
             },
@@ -570,6 +599,7 @@ mod tests {
                 filename: "tool_3.0.0_arm64.deb".to_string(),
                 version: PackageVersion::parse("3.0.0"),
                 download_url: "https://example.com/tool_3.0.0_arm64.deb".to_string(),
+                sha256: None,
                 package_name: Some("tool".to_string()),
                 architecture: Some("arm64".to_string()),
             },
@@ -804,6 +834,7 @@ mod tests {
             filename: "tool-1.0.0.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("file://{}", pkg_path.display()),
+            sha256: None,
             package_name: None,
             architecture: None,
         };
@@ -818,6 +849,7 @@ mod tests {
             filename: "gone.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: "file:///nonexistent/gone.deb".to_string(),
+            sha256: None,
             package_name: None,
             architecture: None,
         };
@@ -833,6 +865,7 @@ mod tests {
             filename: "tool-1.0.0.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("{}/tool-1.0.0.deb", server.url),
+            sha256: None,
             package_name: None,
             architecture: None,
         };
@@ -849,11 +882,68 @@ mod tests {
             filename: "gone.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("{}/gone.deb", server.url),
+            sha256: None,
             package_name: None,
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let err = download_package(&remote, dir.path()).await.unwrap_err();
         assert!(err.to_string().contains("Download request error"));
+    }
+
+    #[tokio::test]
+    async fn download_package_verifies_http_sha256() {
+        let body = b"deb-bytes".to_vec();
+        let sha256 = format!("{:x}", Sha256::digest(&body));
+        let server = MockServer::start(vec![MockResponse::bytes(200, body, &[])]);
+        let remote = RemotePackage {
+            filename: "tool-1.0.0.deb".to_string(),
+            version: PackageVersion::parse("1.0.0"),
+            download_url: format!("{}/tool-1.0.0.deb", server.url),
+            sha256: Some(sha256),
+            package_name: None,
+            architecture: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = download_package(&remote, dir.path()).await.unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"deb-bytes");
+    }
+
+    #[tokio::test]
+    async fn download_package_rejects_sha256_mismatch() {
+        let server = MockServer::start(vec![MockResponse::bytes(200, b"deb-bytes".to_vec(), &[])]);
+        let remote = RemotePackage {
+            filename: "tool-1.0.0.deb".to_string(),
+            version: PackageVersion::parse("1.0.0"),
+            download_url: format!("{}/tool-1.0.0.deb", server.url),
+            sha256: Some(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            ),
+            package_name: None,
+            architecture: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let err = download_package(&remote, dir.path()).await.unwrap_err();
+        assert!(err.to_string().contains("SHA-256 mismatch"));
+    }
+
+    #[tokio::test]
+    async fn download_package_verifies_file_sha256() {
+        let staging = tempfile::tempdir().unwrap();
+        let pkg_path = staging.path().join("tool-1.0.0.deb");
+        std::fs::write(&pkg_path, b"bytes").unwrap();
+        let sha256 = format!("{:x}", Sha256::digest(b"bytes"));
+
+        let remote = RemotePackage {
+            filename: "tool-1.0.0.deb".to_string(),
+            version: PackageVersion::parse("1.0.0"),
+            download_url: format!("file://{}", pkg_path.display()),
+            sha256: Some(sha256),
+            package_name: None,
+            architecture: None,
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let path = download_package(&remote, dir.path()).await.unwrap();
+        assert_eq!(path, pkg_path);
     }
 }

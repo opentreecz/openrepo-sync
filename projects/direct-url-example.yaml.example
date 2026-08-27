@@ -19,3 +19,4 @@ on_conflict: skip          # skip, overwrite, or error (default) when package al
 source:
   type: direct_url
   url: "https://example.com/releases/mypkg-2.1.0.deb"
+  # sha256: "<expected hex digest>"   # optional integrity check before upload

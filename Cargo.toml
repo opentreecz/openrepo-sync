@@ -24,6 +24,7 @@ anyhow       = "1"
 thiserror    = "2"
 semver       = { version = "1", features = ["serde"] }
 regex        = "1"
+sha2         = "0.10"
 glob         = "0.3"
 scraper      = "=0.24.0"
 tracing      = "0.1"

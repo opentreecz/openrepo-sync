@@ -1,0 +1,14 @@
+---
+name: lexmark-aey-ppd-files
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://deb.debian.org/debian
+  suites: bookworm
+  components: main
+  architectures: amd64
+  package_filter: lexmark-aey-ppd-files
+  verify_gpg: false

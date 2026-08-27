@@ -22,10 +22,11 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 
 ## Features
 
-- **5 upstream source types** — GitHub Releases, Debian APT repositories, static URLs, LATEST URLs, SourceForge
+- **6 upstream source types** — GitHub Releases, Debian APT repositories, RPM repositories, static URLs, LATEST URLs, SourceForge
 - **Architecture-aware GitHub downloads** — `arch_filter` picks the right asset (amd64/x86_64/arm64/aarch64 aliases) when a release ships multiple architecture variants
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages`, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
+- **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload
 - **Configurable retention** — keep the N newest releases per package name and architecture, auto-prune the rest without touching unrelated packages in the same OpenRepo repo
 - **Dry-run mode** — preview all actions without modifying the repository
 - **Per-project YAML config files** — one file per tracked package; easy to add, remove, or disable
@@ -181,8 +182,8 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  package_filter: datovka
-  filename_filter: "datovka_*_amd64.deb"
+  architectures: amd64
+  package_filter: [libdatovka0, libdatovka8, datovka]
   verify_gpg: true
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
 ```
@@ -211,9 +212,10 @@ source:
 source:
   type: direct_url
   url: "https://example.com/releases/mypkg-2.1.0.deb"
+  # sha256: "<expected hex digest>"
 ```
 
-Version is extracted from the filename by regex.
+Version is extracted from the filename by regex. If `sha256` is set, the downloaded file must match it before upload.
 
 ### `direct_url_latest` — LATEST URL (version in package metadata)
 
@@ -221,9 +223,10 @@ Version is extracted from the filename by regex.
 source:
   type: direct_url_latest
   url: "https://example.com/releases/mypkg-LATEST.deb"
+  # sha256: "<expected hex digest>"
 ```
 
-Downloads the file, extracts version via `dpkg-deb` (`.deb`) or `rpm -qp` (`.rpm`), renames it, and uploads. Requires `dpkg` or `rpm` installed on the host.
+Downloads the file, optionally verifies SHA-256, extracts version via `dpkg-deb` (`.deb`) or `rpm -qp` (`.rpm`), renames it, and uploads. Requires `dpkg` or `rpm` installed on the host.
 
 ### `sourceforge` — SourceForge File Releases
 

@@ -1,0 +1,9 @@
+---
+name: slack-desktop
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://downloads.slack-edge.com/desktop-releases/linux/x64/latest/slack-desktop-amd64.deb"

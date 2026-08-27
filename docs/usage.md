@@ -63,7 +63,7 @@ For each project, in order:
 2. Fetch the latest `keep_versions` releases from the upstream source
 3. List packages currently in the OpenRepo repository
 4. Diff by filename **and version** — a package is uploaded only if neither its filename nor its version is already present (packages whose version cannot be detected are compared by filename alone)
-5. For each missing package: download → upload → remove local temp file. If OpenRepo rejects the upload as a duplicate, the project's `on_conflict` policy decides: `error` (default), `skip`, or `overwrite`
+5. For each missing package: download → optional SHA-256 verification → upload → remove local temp file. If OpenRepo rejects the upload as a duplicate, the project's `on_conflict` policy decides: `error` (default), `skip`, or `overwrite`
 6. Re-fetch the repo package list and determine the `(package_name, architecture)` groups managed by the current project
 7. Delete packages beyond `keep_versions` only within those managed groups, keeping the newest versions per package name and architecture
 

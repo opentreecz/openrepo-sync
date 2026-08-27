@@ -54,6 +54,7 @@ impl RpmPackageEntry {
             filename: basename.to_string(),
             version: PackageVersion::parse(&version_str),
             download_url,
+            sha256: None,
             package_name: Some(self.name.clone()),
             architecture: Some(self.arch.clone()),
         }

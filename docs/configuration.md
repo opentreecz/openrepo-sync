@@ -128,8 +128,8 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  package_filter: datovka
-  filename_filter: "datovka_*_amd64.deb"
+  architectures: amd64
+  package_filter: [libdatovka0, libdatovka8, datovka]
 ```
 
 `keep_versions` is enforced separately for each `(package_name, architecture)` group. If `package_filter` lists multiple packages, each package/architecture group keeps its own newest N versions.
@@ -150,6 +150,7 @@ source:
 source:
   type: direct_url
   url: "https://example.com/mypkg-2.1.0.deb"
+  sha256: "<expected hex digest>"        # optional
 ```
 
 ### `direct_url_latest`
@@ -157,6 +158,7 @@ source:
 source:
   type: direct_url_latest
   url: "https://example.com/mypkg-LATEST.deb"
+  sha256: "<expected hex digest>"        # optional
 ```
 
 ### `sourceforge`

@@ -117,8 +117,8 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  package_filter: datovka
-  filename_filter: "datovka_*_amd64.deb"
+  architectures: amd64
+  package_filter: [libdatovka0, libdatovka8, datovka]
   verify_gpg: true
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
 ```
@@ -242,6 +242,7 @@ A fixed URL where the filename already contains the version string.
 source:
   type: direct_url
   url: "https://example.com/releases/mypkg-2.1.0.deb"
+  sha256: "<expected hex digest>"   # optional
 ```
 
 ### Fields
@@ -249,6 +250,7 @@ source:
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `url` | Yes | — | Full URL to the package file |
+| `sha256` | No | — | Expected SHA-256 hex digest to verify before upload |
 
 ### Behaviour
 
@@ -260,6 +262,8 @@ Version is extracted from the filename by regex, matching patterns such as:
 
 Strings that do not match a semver pattern are stored as a raw version string.
 
+When `sha256` is set, the downloaded file must match the configured digest or the sync fails before upload.
+
 ---
 
 ## `direct_url_latest` — URL with version in package metadata {#direct_url_latest}
@@ -270,6 +274,7 @@ For sources that publish at a fixed URL (e.g. `mypkg-LATEST.deb`) where the file
 source:
   type: direct_url_latest
   url: "https://example.com/releases/mypkg-LATEST.deb"
+  sha256: "<expected hex digest>"   # optional
 ```
 
 ### Fields
@@ -277,13 +282,15 @@ source:
 | Field | Required | Default | Description |
 |---|---|---|---|
 | `url` | Yes | — | URL to the always-current package file |
+| `sha256` | No | — | Expected SHA-256 hex digest to verify before upload |
 
 ### Behaviour
 
 1. The package is downloaded to a staging directory
-2. Version is extracted from package metadata using `dpkg-deb` or `rpm -qp`
-3. The file is renamed: `mypkg-LATEST.deb` → `mypkg-2.1.0.deb`
-4. The renamed file is uploaded to OpenRepo
+2. If `sha256` is configured, the downloaded bytes are verified
+3. Version is extracted from package metadata using `dpkg-deb` or `rpm -qp`
+4. The file is renamed: `mypkg-LATEST.deb` → `mypkg-2.1.0.deb`
+5. The renamed file is uploaded to OpenRepo
 
 ### Requirements
 

@@ -1,0 +1,9 @@
+---
+name: deb-multimedia-keyring
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url
+  url: "https://www.deb-multimedia.org/pool/main/d/deb-multimedia-keyring/deb-multimedia-keyring_2024.9.1_all.deb"

@@ -186,6 +186,7 @@ impl GithubSource {
                     filename: asset.name.clone(),
                     version: version.clone(),
                     download_url: asset.browser_download_url.clone(),
+                    sha256: None,
                     package_name: None,
                     architecture: None,
                 });

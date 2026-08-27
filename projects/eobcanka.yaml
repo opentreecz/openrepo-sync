@@ -1,0 +1,10 @@
+---
+name: eobcanka
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://info.identita.gov.cz/download/eObcanka.deb"
+  sha256: "41d522fe958869de4f1f81aa2abce75b0c794212196c5690837de10b9cf26209"

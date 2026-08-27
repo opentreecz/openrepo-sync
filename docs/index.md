@@ -25,6 +25,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 - **Architecture-aware GitHub downloads** — `arch_filter` selects the correct asset when a release publishes multiple architecture variants; `amd64`/`x86_64`/`x86-64` and `arm64`/`aarch64` are treated as aliases
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages` index, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
+- **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload
 - **Configurable retention** — keep the N newest releases per package name and architecture, auto-prune the rest
 - **Dry-run mode** — preview all actions without touching the repository
 - **Per-project YAML files** — one file per tracked package; easy to add, remove, or disable
@@ -75,7 +76,7 @@ openrepo-sync
 |---|---|
 | [Installation](install/) | Binary packages, build from source, Docker |
 | [Configuration](configuration/) | Global config and per-project YAML schema |
-| [Source Types](sources/) | All 5 source types with full field reference and examples |
+| [Source Types](sources/) | All 6 source types with full field reference and examples |
 | [Usage](usage/) | CLI reference, examples, logging and debugging |
 | [Docker](docker/) | Multi-platform container — setup, scheduling, troubleshooting |
 | [API Reference](api/) | OpenRepo REST API endpoints used by this tool |

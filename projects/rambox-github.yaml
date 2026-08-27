@@ -19,4 +19,5 @@ source:
   owner: ramboxapp  # GitHub organisation or user
   repo: download  # repository name
   asset_filter: "*.deb"    # optional glob; omit to keep every asset per release
+  arch_filter: amd64
   prerelease: false         # optional, default: false — include pre-releases?

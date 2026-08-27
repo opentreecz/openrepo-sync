@@ -5,5 +5,11 @@ keep_versions: 1
 on_conflict: skip
 
 source:
-  type: direct_url_latest
-  url: "https://downloads.slack-edge.com/desktop-releases/linux/x64/latest/slack-desktop-amd64.deb"
+  type: deb_repo
+  url: https://packagecloud.io/slacktechnologies/slack/debian
+  suites: jessie
+  components: main
+  architectures: amd64
+  package_filter: slack-desktop
+  verify_gpg: true
+  gpg_key: https://packagecloud.io/slacktechnologies/slack/gpgkey

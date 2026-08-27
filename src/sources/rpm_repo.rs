@@ -54,6 +54,8 @@ impl RpmPackageEntry {
             filename: basename.to_string(),
             version: PackageVersion::parse(&version_str),
             download_url,
+            package_name: Some(self.name.clone()),
+            architecture: Some(self.arch.clone()),
         }
     }
 }
@@ -288,11 +290,11 @@ impl RpmRepoSource {
                 },
                 Ok(Event::Text(ref e)) => {
                     if reading_name {
-                        name = e.unescape().unwrap_or_default().into_owned();
+                        name = String::from_utf8_lossy(e.as_ref()).into_owned();
                         reading_name = false;
                     }
                     if reading_arch {
-                        arch = e.unescape().unwrap_or_default().into_owned();
+                        arch = String::from_utf8_lossy(e.as_ref()).into_owned();
                         reading_arch = false;
                     }
                 }

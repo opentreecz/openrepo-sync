@@ -14,7 +14,7 @@ strip = true
 
 [dependencies]
 tokio        = { version = "1", features = ["full"] }
-reqwest      = { version = "0.12", default-features = false, features = ["json", "multipart", "stream", "charset", "http2", "rustls-tls"] }
+reqwest      = { version = "=0.12.24", default-features = false, features = ["json", "multipart", "stream", "charset", "http2", "rustls-tls"] }
 serde        = { version = "1", features = ["derive"] }
 serde_json   = "1"
 serde_yaml   = "0.9"
@@ -25,12 +25,12 @@ thiserror    = "2"
 semver       = { version = "1", features = ["serde"] }
 regex        = "1"
 glob         = "0.3"
-scraper      = "0.27"
+scraper      = "=0.24.0"
 tracing      = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tempfile     = "3"
 futures      = "0.3"
 flate2       = "1"
-quick-xml    = { version = "0.36", features = ["serialize"] }
+quick-xml    = { version = "=0.41.0", features = ["serialize"] }
 lzma-rs      = "0.3"
 rusqlite     = { version = "0.32", features = ["bundled"] }

@@ -77,7 +77,7 @@ Every project file requires these top-level fields:
 |---|---|---|---|---|
 | `name` | string | Yes | — | Identifier used in log output and with `--project` |
 | `repo_uid` | string | Yes | — | Target OpenRepo repository identifier |
-| `keep_versions` | integer | Yes | — | Number of versions to retain; older ones are deleted |
+| `keep_versions` | integer | Yes | — | Number of versions to retain per package name and architecture; older ones are deleted |
 | `on_conflict` | string | No | `error` | `error`, `skip`, or `overwrite` |
 | `source` | object | Yes | — | Upstream source configuration (see [Source Types](../sources/)) |
 
@@ -131,6 +131,8 @@ source:
   package_filter: datovka
   filename_filter: "datovka_*_amd64.deb"
 ```
+
+`keep_versions` is enforced separately for each `(package_name, architecture)` group. If `package_filter` lists multiple packages, each package/architecture group keeps its own newest N versions.
 
 ### `rpm_repo`
 ```yaml

@@ -99,7 +99,7 @@ source:
 
 ### Multiple suites and architectures
 
-All combinations of `suites × components × architectures` are fetched. Results are deduplicated by filename and sorted newest-first before truncation to `keep_versions`.
+All combinations of `suites × components × architectures` are fetched. Results are deduplicated by filename and each `(package_name, architecture)` group is sorted newest-first before truncation to `keep_versions`.
 
 ```yaml
 suites: [bookworm, bullseye]
@@ -123,11 +123,11 @@ source:
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
 ```
 
-For flat repositories, `suites`, `components`, and `architectures` are not used to build metadata URLs. Use `package_filter` and `filename_filter` to select the package names and architectures you want.
+For flat repositories, `suites`, `components`, and `architectures` are not used to build metadata URLs. `architectures` still filters parsed packages by the `Architecture:` field, and `all` packages are kept alongside the requested architectures. Use `package_filter` and `filename_filter` to select the package names and variants you want.
 
 ### Multiple packages
 
-`package_filter` accepts a single package name or a list. When a list is used, packages matching any listed `Package:` field are included.
+`package_filter` accepts a single package name or a list. When a list is used, packages matching any listed `Package:` field are included, and each selected `(package_name, architecture)` group retains its own newest `keep_versions` entries.
 
 ```yaml
 package_filter:

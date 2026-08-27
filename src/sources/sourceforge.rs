@@ -86,10 +86,10 @@ impl SourceforgeSource {
                 if filename.is_empty() {
                     continue;
                 }
-                if let Some(pattern) = &self.filename_filter
-                    && !pattern.matches(&filename)
-                {
-                    continue;
+                if let Some(pattern) = &self.filename_filter {
+                    if !pattern.matches(&filename) {
+                        continue;
+                    }
                 }
                 let href = link.value().attr("href").unwrap_or_default();
                 // SourceForge download links: /projects/<proj>/files/<path>/download
@@ -104,6 +104,8 @@ impl SourceforgeSource {
                     filename,
                     version,
                     download_url,
+                    package_name: None,
+                    architecture: None,
                 });
             }
             if packages.len() >= n {

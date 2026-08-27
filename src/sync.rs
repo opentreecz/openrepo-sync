@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 use tracing::{debug, info, warn};
 
@@ -129,12 +130,11 @@ async fn sync_project_inner(
         }
     }
 
-    // Prune: keep only the newest `keep_versions` packages
-    repo_packages.sort_by(|a, b| b.version.cmp(&a.version));
-    if repo_packages.len() > project.keep_versions {
-        let to_delete = &repo_packages[project.keep_versions..];
+    let managed_groups = managed_groups(&remote_packages, &repo_packages);
+    let to_delete = prune_candidates(&repo_packages, &managed_groups, project.keep_versions);
+    if !to_delete.is_empty() {
         let count = to_delete.len();
-        for pkg in to_delete {
+        for pkg in &to_delete {
             info!(
                 "[{}] Pruning {} ({})",
                 project.name, pkg.filename, pkg.version
@@ -154,6 +154,55 @@ async fn sync_project_inner(
     }
 
     Ok(actions)
+}
+
+fn managed_groups(
+    remote_packages: &[RemotePackage],
+    repo_packages: &[crate::models::RepoPackage],
+) -> HashSet<(String, String)> {
+    let remote_filenames: HashSet<&str> = remote_packages
+        .iter()
+        .map(|pkg| pkg.filename.as_str())
+        .collect();
+    let mut groups = HashSet::new();
+
+    for remote in remote_packages {
+        if let (Some(name), Some(arch)) = (&remote.package_name, &remote.architecture) {
+            groups.insert((name.clone(), arch.clone()));
+        }
+    }
+
+    for repo_pkg in repo_packages {
+        if remote_filenames.contains(repo_pkg.filename.as_str()) {
+            groups.insert((repo_pkg.package_name.clone(), repo_pkg.architecture.clone()));
+        }
+    }
+
+    groups
+}
+
+fn prune_candidates(
+    repo_packages: &[crate::models::RepoPackage],
+    managed_groups: &HashSet<(String, String)>,
+    keep_versions: usize,
+) -> Vec<crate::models::RepoPackage> {
+    let mut grouped: BTreeMap<(String, String), Vec<crate::models::RepoPackage>> = BTreeMap::new();
+
+    for pkg in repo_packages {
+        let key = (pkg.package_name.clone(), pkg.architecture.clone());
+        if managed_groups.contains(&key) {
+            grouped.entry(key).or_default().push(pkg.clone());
+        }
+    }
+
+    let mut to_delete = Vec::new();
+    for (_, mut group) in grouped {
+        group.sort_by(|a, b| b.version.cmp(&a.version));
+        if group.len() > keep_versions {
+            to_delete.extend(group.into_iter().skip(keep_versions));
+        }
+    }
+    to_delete
 }
 
 async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
@@ -300,15 +349,31 @@ mod tests {
         MockResponse::json(200, r#"{"results":[],"next":null}"#)
     }
 
-    fn list_of(names: &[(&str, &str)]) -> MockResponse {
-        let entries: Vec<String> = names
+    fn list_repo_packages(entries: &[(&str, &str, &str, &str)]) -> MockResponse {
+        let entries: Vec<String> = entries
             .iter()
-            .map(|(uid, name)| format!(r#"{{"package_uid":"{}","package_name":"{}"}}"#, uid, name))
+            .map(|(uid, package_name, architecture, filename)| {
+                let version = crate::version::extract_version_from_filename(filename)
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "0".to_string());
+                format!(
+                    r#"{{"package_uid":"{}","package_name":"{}","filename":"{}","architecture":"{}","version":"{}"}}"#,
+                    uid, package_name, filename, architecture, version
+                )
+            })
             .collect();
         MockResponse::json(
             200,
             &format!(r#"{{"results":[{}],"next":null}}"#, entries.join(",")),
         )
+    }
+
+    fn list_of(names: &[(&str, &str)]) -> MockResponse {
+        let entries: Vec<_> = names
+            .iter()
+            .map(|(uid, name)| (*uid, "tool", "amd64", *name))
+            .collect();
+        list_repo_packages(&entries)
     }
 
     // ── dry-run paths ──────────────────────────────────────────────────────
@@ -390,6 +455,176 @@ mod tests {
             result.actions[1],
             SyncAction::Pruned { removed_count: 2 }
         ));
+    }
+
+    #[test]
+    fn prune_candidates_only_touch_managed_package_arch_groups() {
+        let repo_packages = vec![
+            crate::models::RepoPackage {
+                package_uid: "u1".to_string(),
+                filename: "tool-3.0.0-amd64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "u2".to_string(),
+                filename: "tool-2.0.0-amd64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("2.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "u3".to_string(),
+                filename: "tool-1.0.0-arm64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "arm64".to_string(),
+                version: PackageVersion::parse("1.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "u4".to_string(),
+                filename: "manual-1.0.0.deb".to_string(),
+                package_name: "manual".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("1.0.0"),
+            },
+        ];
+        let managed = HashSet::from([(String::from("tool"), String::from("amd64"))]);
+
+        let to_delete = prune_candidates(&repo_packages, &managed, 1);
+
+        assert_eq!(to_delete.len(), 1);
+        assert_eq!(to_delete[0].package_uid, "u2");
+    }
+
+    #[test]
+    fn managed_groups_use_remote_metadata_when_available() {
+        let remote_packages = vec![RemotePackage {
+            filename: "tool-1.0.0-amd64.deb".to_string(),
+            version: PackageVersion::parse("1.0.0"),
+            download_url: "https://example.com/tool-1.0.0-amd64.deb".to_string(),
+            package_name: Some("tool".to_string()),
+            architecture: Some("amd64".to_string()),
+        }];
+
+        let groups = managed_groups(&remote_packages, &[]);
+
+        assert!(groups.contains(&(String::from("tool"), String::from("amd64"))));
+    }
+
+    #[tokio::test]
+    async fn sync_project_delete_requests_only_target_managed_group() {
+        let server = MockServer::start(vec![
+            list_repo_packages(&[
+                ("keep-new", "tool", "amd64", "tool_3.0.0_amd64.deb"),
+                ("keep-mid", "tool", "amd64", "tool_2.0.0_amd64.deb"),
+                ("drop-old", "tool", "amd64", "tool_1.0.0_amd64.deb"),
+                ("arm-keep", "tool", "arm64", "tool_3.0.0_arm64.deb"),
+                (
+                    "manual",
+                    "manual-package",
+                    "amd64",
+                    "manual_9.9.9_amd64.deb",
+                ),
+                (
+                    "other-project",
+                    "other-tool",
+                    "amd64",
+                    "other_5.0.0_amd64.deb",
+                ),
+            ]),
+            MockResponse::json(200, "{}"),
+        ]);
+        let client = RepoClient::new(&server.url, "k").unwrap();
+        let dir = tempfile::tempdir().unwrap();
+
+        let p = project(
+            "https://example.com/tool_3.0.0_amd64.deb",
+            2,
+            OnConflict::Error,
+        );
+        let result = sync_project(&p, &client, dir.path(), false).await;
+
+        assert!(matches!(result.actions[0], SyncAction::UpToDate));
+        assert!(matches!(
+            result.actions[1],
+            SyncAction::Pruned { removed_count: 1 }
+        ));
+
+        let requests = server.requests();
+        assert_eq!(requests.len(), 2);
+        assert!(requests[1].starts_with("DELETE /api/r/pkg/drop-old/"));
+    }
+
+    #[test]
+    fn prune_candidates_enforces_keep_versions_per_architecture() {
+        let remote_packages = vec![
+            RemotePackage {
+                filename: "tool_3.0.0_amd64.deb".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+                download_url: "https://example.com/tool_3.0.0_amd64.deb".to_string(),
+                package_name: Some("tool".to_string()),
+                architecture: Some("amd64".to_string()),
+            },
+            RemotePackage {
+                filename: "tool_3.0.0_arm64.deb".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+                download_url: "https://example.com/tool_3.0.0_arm64.deb".to_string(),
+                package_name: Some("tool".to_string()),
+                architecture: Some("arm64".to_string()),
+            },
+        ];
+        let initial_packages = vec![
+            crate::models::RepoPackage {
+                package_uid: "amd64-new".to_string(),
+                filename: "tool_3.0.0_amd64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "amd64-mid".to_string(),
+                filename: "tool_2.0.0_amd64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("2.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "amd64-old".to_string(),
+                filename: "tool_1.0.0_amd64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "amd64".to_string(),
+                version: PackageVersion::parse("1.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "arm64-new".to_string(),
+                filename: "tool_3.0.0_arm64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "arm64".to_string(),
+                version: PackageVersion::parse("3.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "arm64-mid".to_string(),
+                filename: "tool_2.0.0_arm64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "arm64".to_string(),
+                version: PackageVersion::parse("2.0.0"),
+            },
+            crate::models::RepoPackage {
+                package_uid: "arm64-old".to_string(),
+                filename: "tool_1.0.0_arm64.deb".to_string(),
+                package_name: "tool".to_string(),
+                architecture: "arm64".to_string(),
+                version: PackageVersion::parse("1.0.0"),
+            },
+        ];
+
+        let managed = managed_groups(&remote_packages, &initial_packages);
+        let to_delete = prune_candidates(&initial_packages, &managed, 2);
+
+        assert_eq!(to_delete.len(), 2);
+        assert!(to_delete.iter().any(|pkg| pkg.package_uid == "amd64-old"));
+        assert!(to_delete.iter().any(|pkg| pkg.package_uid == "arm64-old"));
     }
 
     // ── real upload path via file:// package ───────────────────────────────
@@ -569,6 +804,8 @@ mod tests {
             filename: "tool-1.0.0.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("file://{}", pkg_path.display()),
+            package_name: None,
+            architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let path = download_package(&remote, dir.path()).await.unwrap();
@@ -581,6 +818,8 @@ mod tests {
             filename: "gone.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: "file:///nonexistent/gone.deb".to_string(),
+            package_name: None,
+            architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let err = download_package(&remote, dir.path()).await.unwrap_err();
@@ -594,6 +833,8 @@ mod tests {
             filename: "tool-1.0.0.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("{}/tool-1.0.0.deb", server.url),
+            package_name: None,
+            architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let path = download_package(&remote, dir.path()).await.unwrap();
@@ -608,6 +849,8 @@ mod tests {
             filename: "gone.deb".to_string(),
             version: PackageVersion::parse("1.0.0"),
             download_url: format!("{}/gone.deb", server.url),
+            package_name: None,
+            architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
         let err = download_package(&remote, dir.path()).await.unwrap_err();

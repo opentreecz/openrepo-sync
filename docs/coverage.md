@@ -22,22 +22,22 @@ An HTML report is published here automatically on every successful CI run.
 
 ## Current Results
 
-> **Note:** This table is a point-in-time snapshot. Live coverage is tracked by
-> [Codecov](https://codecov.io/gh/opentreecz/openrepo-sync) and updated on every CI run.
+> **Note:** This table is a point-in-time snapshot focused on the main modules.
+> Live coverage is tracked by [Codecov](https://codecov.io/gh/opentreecz/openrepo-sync) and updated on every CI run.
 
 | File | Tests | Description |
 |---|---|---|
 | `src/config.rs` | 29 | Config deserialization, env-var expansion, schedule parsing |
 | `src/models.rs` | 12 | PackageVersion parsing, ordering, Display |
-| `src/repo_client.rs` | 23 | HTTP client: list/upload/delete/whoami, pagination, polling |
-| `src/sources/deb_repo.rs` | 34 | Packages parsing, GPG verification, multi-suite, flat layout |
+| `src/repo_client.rs` | 23 | HTTP client: list/upload/delete/whoami, pagination, polling, OpenRepo package field parsing |
+| `src/sources/deb_repo.rs` | 37 | Packages parsing, per-group retention, architecture filtering, GPG verification, multi-suite, flat layout |
 | `src/sources/direct_url.rs` | 14 | Static URL version, LATEST download, filename resolution |
 | `src/sources/github.rs` | 20 | Asset collection, arch_filter, pagination, draft/prerelease |
 | `src/sources/sourceforge.rs` | 12 | HTML scraping, filename filter, folder URL |
-| `src/sync.rs` | 15 | Full sync cycle: upload, skip, conflict, prune, dry-run |
+| `src/sync.rs` | 18 | Full sync cycle: upload, skip, conflict, scoped prune, dry-run |
 | `src/version.rs` | 11 | Filename version extraction, dpkg-deb integration |
 | `src/main.rs` | 12 | CLI parsing, project filter, integration against mock |
-| **Total** | **182** | |
+| **Test suite** | **204 tests passed** | Latest local `cargo test` run after the retention and architecture regression additions |
 
 ---
 
@@ -58,7 +58,7 @@ available at [/coverage-report/tarpaulin-report.html](../coverage-report/tarpaul
 | `sources::github` | Asset collection, arch_filter priority (amd64/x86_64/arm64/aarch64 aliases), pagination, draft/prerelease skipping, mock API |
 | `sources::sourceforge` | HTML scraping, filename filter, folder URL, mock HTTP server |
 | `sources::direct_url` | Static URL version parsing, LATEST URL download+version extraction, filename utilities |
-| `sync` | Full sync cycle via mock server: upload, skip, conflict, prune, dry-run, error propagation |
+| `sync` | Full sync cycle via mock server: upload, skip, conflict, scoped prune, dry-run, error propagation |
 | `version` | `extract_version_from_filename` — all naming patterns; real `.deb` packaging integration test |
 | `main` | CLI argument parsing, flag defaults, project filter, run integration against mock server |
 

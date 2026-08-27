@@ -140,16 +140,32 @@ impl RepoClient {
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string();
-                        let filename = pkg
+                        let package_name = pkg
                             .get("package_name")
                             .and_then(|v| v.as_str())
                             .unwrap_or_default()
                             .to_string();
-                        let version = extract_version_from_filename(&filename)
+                        let filename = pkg
+                            .get("filename")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(package_name.as_str())
+                            .to_string();
+                        let architecture = pkg
+                            .get("architecture")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        let version = pkg
+                            .get("version")
+                            .and_then(|v| v.as_str())
+                            .map(PackageVersion::parse)
+                            .or_else(|| extract_version_from_filename(&filename))
                             .unwrap_or(PackageVersion::Raw("0".to_string()));
                         packages.push(RepoPackage {
                             package_uid,
                             filename,
+                            package_name,
+                            architecture,
                             version,
                         });
                     }
@@ -369,8 +385,8 @@ mod tests {
     #[tokio::test]
     async fn list_packages_parses_results_and_extracts_versions() {
         let body = r#"{"results":[
-            {"package_uid":"u1","package_name":"curl_8.5.0_amd64.deb"},
-            {"package_uid":"u2","package_name":"noversion.deb"}
+            {"package_uid":"u1","package_name":"curl","filename":"curl_8.5.0_amd64.deb","architecture":"amd64","version":"8.5.0"},
+            {"package_uid":"u2","package_name":"noversion","filename":"noversion.deb","architecture":"all"}
         ],"next":null}"#;
         let server = MockServer::start(vec![MockResponse::json(200, body)]);
         let client = RepoClient::new(&server.url, "k").unwrap();
@@ -379,8 +395,12 @@ mod tests {
         assert_eq!(pkgs.len(), 2);
         assert_eq!(pkgs[0].package_uid, "u1");
         assert_eq!(pkgs[0].filename, "curl_8.5.0_amd64.deb");
+        assert_eq!(pkgs[0].package_name, "curl");
+        assert_eq!(pkgs[0].architecture, "amd64");
         assert_eq!(pkgs[0].version, PackageVersion::parse("8.5.0"));
-        // Unversioned filename falls back to raw "0"
+        assert_eq!(pkgs[1].package_name, "noversion");
+        assert_eq!(pkgs[1].architecture, "all");
+        // Missing API version falls back to filename/raw parsing.
         assert_eq!(pkgs[1].version, PackageVersion::Raw("0".to_string()));
 
         let requests = server.requests();
@@ -424,13 +444,13 @@ mod tests {
                 MockResponse::json(
                     200,
                     &format!(
-                        r#"{{"results":[{{"package_uid":"u1","package_name":"a-1.0.0.deb"}}],"next":"{}/api/r/packages/?page=2"}}"#,
+                        r#"{{"results":[{{"package_uid":"u1","package_name":"a","filename":"a-1.0.0.deb","architecture":"amd64","version":"1.0.0"}}],"next":"{}/api/r/packages/?page=2"}}"#,
                         url
                     ),
                 ),
                 MockResponse::json(
                     200,
-                    r#"{"results":[{"package_uid":"u2","package_name":"b-2.0.0.deb"}],"next":null}"#,
+                    r#"{"results":[{"package_uid":"u2","package_name":"b","filename":"b-2.0.0.deb","architecture":"amd64","version":"2.0.0"}],"next":null}"#,
                 ),
             ]
         });

@@ -41,6 +41,8 @@ impl DirectUrlSource {
             filename,
             version,
             download_url: self.url.clone(),
+            package_name: None,
+            architecture: None,
         }])
     }
 
@@ -100,6 +102,8 @@ impl DirectUrlSource {
             filename: versioned_filename,
             version,
             download_url: format!("file://{}", stable_path.display()),
+            package_name: None,
+            architecture: None,
         }])
     }
 }

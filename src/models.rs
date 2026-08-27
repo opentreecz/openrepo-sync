@@ -48,6 +48,8 @@ pub struct RemotePackage {
     pub filename: String,
     pub version: PackageVersion,
     pub download_url: String,
+    pub package_name: Option<String>,
+    pub architecture: Option<String>,
 }
 
 /// A package stored in the OpenRepo repository.
@@ -55,6 +57,8 @@ pub struct RemotePackage {
 pub struct RepoPackage {
     pub package_uid: String,
     pub filename: String,
+    pub package_name: String,
+    pub architecture: String,
     pub version: PackageVersion,
 }
 

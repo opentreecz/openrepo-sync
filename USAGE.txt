@@ -80,7 +80,8 @@ on_conflict is optional.
 
   name        Identifier used in log output and with --project.
   repo_uid    The repo_uid of the target OpenRepo repository.
-  keep_versions  Maximum number of releases to retain; older ones are deleted.
+  keep_versions  Maximum number of releases to retain per package name and
+                 architecture; older ones are deleted.
   on_conflict What to do when a package already exists in the repository:
               error (default), skip, or overwrite.
   source      Upstream source configuration (see Source Types below).
@@ -90,14 +91,18 @@ deb_repo sources support two repository layouts:
   layout: debian   Standard dists/<suite>/<component>/binary-<arch>/Packages
                    layout (default).
   layout: flat     OBS-style layout with Packages/Packages.gz at the repository
-                   root. In this mode, suites/components/architectures are not
-                   used for metadata URLs; select packages with package_filter
-                   and filename_filter.
+                    root. In this mode, suites/components/architectures are not
+                    used for metadata URLs, but architectures still filter the
+                    parsed Packages entries by Architecture:.
 
 package_filter accepts either one package name or a list:
 
   package_filter: nginx
   package_filter: [datovka, libdatovka8]
+
+keep_versions is enforced separately for each (package name, architecture)
+group. Manual uploads and unrelated packages in the same OpenRepo repository are
+not pruned by another project's sync run.
 
 
 SOURCE TYPES
@@ -186,7 +191,7 @@ filename glob, and uploads the newest versions.
 
 Every suites x components x architectures combination is fetched and merged;
 duplicate filenames (e.g. arch:all packages) are collapsed, and the newest
-keep_versions entries are kept.
+keep_versions entries are kept per (package name, architecture) group.
 
 With verify_gpg: true (the default) the suite's InRelease file is verified
 against gpg_key — either an http(s):// URL fetched at sync time or an inline

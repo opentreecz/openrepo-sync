@@ -64,8 +64,12 @@ For each project, in order:
 3. List packages currently in the OpenRepo repository
 4. Diff by filename **and version** — a package is uploaded only if neither its filename nor its version is already present (packages whose version cannot be detected are compared by filename alone)
 5. For each missing package: download → upload → remove local temp file. If OpenRepo rejects the upload as a duplicate, the project's `on_conflict` policy decides: `error` (default), `skip`, or `overwrite`
-6. Re-fetch the repo package list and sort by version descending
-7. Delete packages beyond `keep_versions`, keeping only the newest
+6. Re-fetch the repo package list and determine the `(package_name, architecture)` groups managed by the current project
+7. Delete packages beyond `keep_versions` only within those managed groups, keeping the newest versions per package name and architecture
+
+Projects sharing the same OpenRepo repository UID do not prune each other's packages. Manual uploads outside the current project's managed groups are left untouched.
+
+For shared repositories, run `--dry-run` after changing `keep_versions`, `package_filter`, or `architectures` to confirm only the intended groups would be pruned.
 
 If a project fails, the error is printed to stderr and remaining projects continue. The process exits with code 1 if any project had an error.
 

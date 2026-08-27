@@ -26,7 +26,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 - **Architecture-aware GitHub downloads** — `arch_filter` picks the right asset (amd64/x86_64/arm64/aarch64 aliases) when a release ships multiple architecture variants
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages`, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
-- **Configurable retention** — keep the N newest releases, auto-prune the rest
+- **Configurable retention** — keep the N newest releases per package name and architecture, auto-prune the rest without touching unrelated packages in the same OpenRepo repo
 - **Dry-run mode** — preview all actions without modifying the repository
 - **Per-project YAML config files** — one file per tracked package; easy to add, remove, or disable
 - **`${ENV_VAR}` expansion** in config values for safe API key handling
@@ -123,7 +123,7 @@ schedule:
 |---|---|
 | `name` | Identifier used in log output and `--project` |
 | `repo_uid` | Target OpenRepo repository UID |
-| `keep_versions` | Maximum number of versions to retain (older ones are deleted) |
+| `keep_versions` | Maximum number of versions to retain per package name and architecture (older ones are deleted) |
 | `on_conflict` | What to do if the package already exists: `error` (default), `skip`, `overwrite` |
 | `source` | Upstream source configuration (see Source Types below) |
 
@@ -172,6 +172,8 @@ source:
 
 **Defaults:** `layout: debian`, `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
 
+`keep_versions` is applied per `(package_name, architecture)` group. When `package_filter` contains multiple package names, each selected package/architecture group keeps its own newest N versions.
+
 OBS-style flat APT repositories are supported with `layout: flat`:
 
 ```yaml
@@ -184,6 +186,8 @@ source:
   verify_gpg: true
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
 ```
+
+For flat repositories, `architectures` still filters packages by the `Architecture:` field in the `Packages` index. `all` packages are kept alongside the requested architectures.
 
 ### `rpm_repo` — RPM (YUM/DNF) Repository
 
@@ -248,6 +252,8 @@ docker compose up -d                              # scheduled sync service
 ```
 
 `docker compose up -d` starts a long-running scheduler container. By default it runs once immediately, then repeats every `schedule.interval` from `config.yaml`.
+
+When multiple projects share the same OpenRepo repository UID, run `openrepo-sync --dry-run` after changing retention or filters to confirm only the intended package groups will be managed.
 
 ### Build from source
 

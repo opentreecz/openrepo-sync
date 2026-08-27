@@ -104,6 +104,8 @@ impl SourceforgeSource {
                     filename,
                     version,
                     download_url,
+                    package_name: None,
+                    architecture: None,
                 });
             }
             if packages.len() >= n {

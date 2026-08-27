@@ -186,6 +186,8 @@ impl GithubSource {
                     filename: asset.name.clone(),
                     version: version.clone(),
                     download_url: asset.browser_download_url.clone(),
+                    package_name: None,
+                    architecture: None,
                 });
                 if packages.len() >= n {
                     return true;

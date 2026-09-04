@@ -27,9 +27,9 @@ Docker dependency.
 
 ---
 
-## Phase 1: Foundation — API Contract & Security (Weeks 1–3)
+## Phase 1: Foundation — API Contract & Security (Weeks 1–3) ✅ COMPLETE
 
-### 1.1 OpenAPI Specification (Server)
+### 1.1 OpenAPI Specification (Server) ✅
 
 **Goal:** Generate a machine-readable API contract from the existing DRF views
 using `drf-spectacular`. This is the foundation for typed API clients and
@@ -67,7 +67,7 @@ Once the server exposes an OpenAPI spec:
 - Phase 3.6 (OpenAPI Schema Validation in CI) can validate client structs against it
 - Known issue #5 (manual JSON parsing in `repo_client.rs`) has a clear resolution path
 
-### 1.2 API Versioning (Server)
+### 1.2 API Versioning (Server) ✅
 
 **Goal:** Version the API without breaking existing clients.
 
@@ -83,7 +83,7 @@ Once the server exposes an OpenAPI spec:
 
 **No breaking change.** All existing clients continue to work via `/api/`.
 
-### 1.3 Structured Error Responses (Server)
+### 1.3 Structured Error Responses (Server) ✅
 
 **Goal:** Replace string-matched error detection with machine-readable error codes.
 
@@ -97,7 +97,7 @@ Once the server exposes an OpenAPI spec:
 **Key change:** "Package already exists" errors return **HTTP 409 Conflict** (not 400)
 with code `PACKAGE_EXISTS`.
 
-### 1.4 Fix Conflict Detection (Client — this repo)
+### 1.4 Fix Conflict Detection (Client — this repo) ✅
 
 **Goal:** Replace string matching with HTTP status code + error code checking.
 
@@ -109,7 +109,7 @@ with code `PACKAGE_EXISTS`.
 **New file:** `src/errors.rs` — `SyncError` enum with `PackageExists`, `RepoNotFound`,
 `AuthFailed`, `ServerError(String)`.
 
-### 1.5 Critical Security Fixes (Server)
+### 1.5 Critical Security Fixes (Server) ✅
 
 **Priority order:**
 
@@ -271,18 +271,18 @@ Change `PAGE_SIZE` from 2000 to 500 to match `max_page_size`.
 ## Execution Order
 
 ```
-Phase 1 (Weeks 1-3): Foundation
-  ├── 1.1 OpenAPI spec generation (server)
-  ├── 1.2 API versioning (server)
-  ├── 1.3 Structured error responses (server)
-  ├── 1.4 Fix conflict detection (client) — depends on 1.3
-  └── 1.5 Security fixes (server) — parallel with 1.1-1.4
-       ├── 1.5a Shell injection (Critical — do first)
-       ├── 1.5b CSRF protection
-       ├── 1.5c SECRET_KEY
-       ├── 1.5d ALLOWED_HOSTS
-       ├── 1.5e Upload size limit
-       └── 1.5f Upload status authz
+Phase 1 (Weeks 1-3): Foundation ✅ COMPLETE
+  ├── 1.1 OpenAPI spec generation (server) ✅
+  ├── 1.2 API versioning (server) ✅
+  ├── 1.3 Structured error responses (server) ✅
+  ├── 1.4 Fix conflict detection (client) ✅
+  └── 1.5 Security fixes (server) ✅
+       ├── 1.5a Shell injection ✅
+       ├── 1.5b CSRF protection ✅
+       ├── 1.5c SECRET_KEY ✅
+       ├── 1.5d ALLOWED_HOSTS ✅
+       ├── 1.5e Upload size limit ✅
+       └── 1.5f Upload status authz ✅
 
 Phase 2 (Weeks 3-5): Architecture
   ├── 2.1 PackageSource trait (client)

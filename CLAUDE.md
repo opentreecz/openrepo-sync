@@ -53,9 +53,9 @@ Auth: `Authorization: Token <api_key>` header on all requests.
 
 ## Known Issues (to fix per DEVELOPMENT_PLAN.md)
 
-1. **Fragile conflict detection** — `sync.rs:102-105` matches error strings with
-   `contains("400")` and `contains("already exists")`. Must be replaced with typed
-   error codes once server returns structured errors.
+1. **~~Fragile conflict detection~~** — ✅ RESOLVED: `sync.rs` now uses typed
+   `UploadError::PackageExists` variant. Server returns HTTP 409 + `PACKAGE_EXISTS`
+   error code. Backward-compatible fallback for older servers retained.
 
 2. **Dead PackageSource trait** — `sources/mod.rs` defines the trait but no source
    implements it. Dispatch is a manual `match` in `sync.rs:209-287`.

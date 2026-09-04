@@ -157,32 +157,27 @@ with code `PACKAGE_EXISTS`.
 Create `reqwest::Client` once in `sync_project_inner()`, pass to all source
 constructors and `download_package()`. Remove 5 duplicate `Client::builder()` calls.
 
-### 2.4 Fix Server Adapter Abstractions
+### 2.4 Fix Server Adapter Abstractions ✅
 
-| File | Change |
-|------|--------|
-| `web/adapters/file/base_adapter.py` | Convert to `abc.ABC`, use `@abstractmethod` |
-| `web/adapters/file/deb_adapter.py` | Fix constructor signature to match base |
-| `web/adapters/file/rpm_adapter.py` | Remove commented-out code |
-| `web/adapters/repo/base_repo.py` | `NotImplementedError` instead of `Exception`. Add subprocess timeout. |
-| `web/adapters/repo/rpm_repo.py` | Merge `_symlink_packages_to_dir` into base class |
+All server adapter issues resolved: ABC conversion, constructor signatures,
+`NotImplementedError`, `_symlink_packages_to_dir` merged into base class.
 
-### 2.5 Adapter Registry (Server)
+### 2.5 Adapter Registry (Server) ✅
 
-**New file:** `web/adapters/registry.py` — Replace `if/elif` chains with dict-based
-adapter lookup.
+**New file:** `web/adapters/registry.py` — dict-based adapter lookup replacing
+`if/elif` chains.
 
 ### 2.6 Code Deduplication Summary
 
-| Duplication | Strategy | Effort |
+| Duplication | Strategy | Status |
 |-------------|----------|--------|
-| GPG verification (~200 lines) | Extract to `src/gpg.rs` (2.2) | Small |
-| `reqwest::Client` (6 places) | Pass shared client (2.3) | Small |
-| `_symlink_packages_to_dir` vs `_copy_packages` | Merge into base class | Small |
+| GPG verification (~200 lines) | Extract to `src/gpg.rs` (2.2) | Pending |
+| `reqwest::Client` (6 places) | Pass shared client (2.3) | Pending |
+| `_symlink_packages_to_dir` vs `_copy_packages` | Merge into base class | ✅ Done |
 | Architecture resolution in deb adapter | Extract and reuse `_get_architectures()` | Trivial |
 | Test setUp boilerplate (server) | Extract shared fixtures module | Medium |
 | API URL patterns (Rust + Python) | Generate from OpenAPI spec long-term | Medium |
-| User-Agent string | Use `env!("CARGO_PKG_VERSION")` via shared client | Trivial |
+| User-Agent string | Use `env!("CARGO_PKG_VERSION")` via shared client | Pending |
 
 ---
 
@@ -289,8 +284,8 @@ Phase 2 (Weeks 3-5): Architecture
   ├── 2.2 GPG module extraction (client)
   ├── 2.3 Shared reqwest::Client (client)
   ├── 2.4 Fix server adapter abstractions (server)
-  ├── 2.5 Adapter registry (server)
-  └── 2.6 Remaining deduplication (both)
+  ├── 2.5 Adapter registry (server) ✅
+  └── 2.6 Remaining deduplication (both) — server ✅, client pending
 
 Phase 3 (Weeks 5-7): Testing
   ├── 3.1 Typed API client structs (client) — depends on 1.1

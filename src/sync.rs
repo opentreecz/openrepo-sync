@@ -7,6 +7,7 @@ use tracing::{debug, info, warn};
 use crate::config::OnConflict;
 use crate::config::ProjectConfig;
 use crate::config::SourceConfig;
+use crate::errors::UploadError;
 use crate::models::{RemotePackage, SyncAction, SyncResult};
 use crate::repo_client::RepoClient;
 use crate::sources::{
@@ -99,10 +100,8 @@ async fn sync_project_inner(
                             version: remote.version.clone(),
                         });
                     }
-                    Err(e)
-                        if project.on_conflict == OnConflict::Skip
-                            && (e.to_string().contains("400")
-                                || e.to_string().contains("already exists")) =>
+                    Err(UploadError::PackageExists)
+                        if project.on_conflict == OnConflict::Skip =>
                     {
                         info!(
                             "[{}] Skipping {} — already exists in repository",
@@ -112,7 +111,14 @@ async fn sync_project_inner(
                             version: remote.version.clone(),
                         });
                     }
-                    Err(e) => {
+                    Err(UploadError::PackageExists) => {
+                        return Err(anyhow::anyhow!(
+                            "Package {} already exists in repository (use on_conflict: skip or overwrite)",
+                            remote.filename
+                        ))
+                        .with_context(|| format!("Failed to upload {}", remote.filename));
+                    }
+                    Err(UploadError::Other(e)) => {
                         return Err(e)
                             .with_context(|| format!("Failed to upload {}", remote.filename));
                     }
@@ -728,15 +734,18 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn conflict_with_skip_policy_http400_reports_skipped() {
-        // Legacy path: server returns 400 directly (no async processing).
+    async fn conflict_with_skip_policy_http409_reports_skipped() {
+        // Phase 1.3+ path: server returns 409 Conflict directly (synchronous).
         let staging = tempfile::tempdir().unwrap();
         let pkg_path = staging.path().join("tool-1.2.0.deb");
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         let server = MockServer::start(vec![
             empty_list(),
-            MockResponse::json(400, "already exists"),
+            MockResponse::json(
+                409,
+                r#"{"code":"PACKAGE_EXISTS","detail":"already exists","status":409}"#,
+            ),
             empty_list(),
         ]);
         let client = RepoClient::new(&server.url, "k").unwrap();

@@ -48,6 +48,9 @@ The client uses 5 of the server's 14 endpoint groups:
 
 Auth: `Authorization: Token <api_key>` header on all requests.
 
+> The server now provides an auto-generated OpenAPI spec at `/api/schema/` and
+> interactive Swagger UI at `/api/docs/`. These are the canonical API contract.
+
 ## Known Issues (to fix per DEVELOPMENT_PLAN.md)
 
 1. **Fragile conflict detection** — `sync.rs:102-105` matches error strings with
@@ -63,7 +66,8 @@ Auth: `Authorization: Token <api_key>` header on all requests.
 4. **reqwest::Client constructed 6 times** — Should be shared via constructor injection.
 
 5. **Manual JSON parsing** — `repo_client.rs` uses `serde_json::Value` with `.get()`
-   chains instead of typed deserialization.
+   chains instead of typed deserialization. Now that the server exposes an OpenAPI
+   spec at `/api/schema/`, typed structs can be derived from it (Phase 3.1).
 
 6. **Hardcoded User-Agent** — `"openrepo-sync/0.1"` at `repo_client.rs:63` and
    `sync.rs:315`. Should use `env!("CARGO_PKG_VERSION")`.

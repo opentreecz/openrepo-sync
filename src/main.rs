@@ -1,4 +1,5 @@
 mod config;
+mod errors;
 mod models;
 mod repo_client;
 mod sources;

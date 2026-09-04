@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use reqwest::{
     Client, StatusCode,
     multipart::{Form, Part},
@@ -7,6 +7,7 @@ use serde::Deserialize;
 use std::path::Path;
 use tracing::{debug, warn};
 
+use crate::errors::{ApiError, UploadError, code};
 use crate::models::{PackageVersion, RepoPackage};
 use crate::version::extract_version_from_filename;
 
@@ -43,6 +44,10 @@ struct UploadStatusResponse {
     status: String,
     #[serde(default)]
     error_message: String,
+    /// Machine-readable error code set by the server (Phase 1.3+).
+    /// Empty string on older servers.
+    #[serde(default)]
+    error_code: String,
 }
 
 #[allow(dead_code)]
@@ -189,7 +194,12 @@ impl RepoClient {
         Ok(packages)
     }
 
-    pub async fn upload_package(&self, repo_uid: &str, path: &Path, overwrite: bool) -> Result<()> {
+    pub async fn upload_package(
+        &self,
+        repo_uid: &str,
+        path: &Path,
+        overwrite: bool,
+    ) -> Result<(), UploadError> {
         let url = format!("{}/api/{}/upload/", self.base_url, repo_uid);
         let filename = path
             .file_name()
@@ -201,7 +211,8 @@ impl RepoClient {
 
         let bytes = tokio::fs::read(path)
             .await
-            .with_context(|| format!("Failed to read file for upload: {}", path.display()))?;
+            .with_context(|| format!("Failed to read file for upload: {}", path.display()))
+            .map_err(UploadError::Other)?;
 
         let file_part = Part::bytes(bytes).file_name(filename.clone());
         let mut form = Form::new().part("package_file", file_part);
@@ -216,13 +227,28 @@ impl RepoClient {
             .multipart(form)
             .send()
             .await
-            .context("Upload request failed")?;
+            .context("Upload request failed")
+            .map_err(UploadError::Other)?;
 
         let status = resp.status();
 
         if !status.is_success() && status != StatusCode::ACCEPTED {
+            // HTTP 409 Conflict → PACKAGE_EXISTS (new servers, Phase 1.3+)
+            if status == StatusCode::CONFLICT {
+                return Err(UploadError::PackageExists);
+            }
             let body = resp.text().await.unwrap_or_default();
-            bail!("Upload failed ({}): {}", status, body);
+            // Try to parse a structured error envelope from the body.
+            if let Ok(api_err) = serde_json::from_str::<ApiError>(&body) {
+                if api_err.code == code::PACKAGE_EXISTS {
+                    return Err(UploadError::PackageExists);
+                }
+            }
+            return Err(UploadError::Other(anyhow!(
+                "Upload failed ({}): {}",
+                status,
+                body
+            )));
         }
 
         // Server returns 202 Accepted with {"task_id": "..."} for async
@@ -231,7 +257,8 @@ impl RepoClient {
             let upload_resp: UploadResponse = resp
                 .json()
                 .await
-                .context("Failed to parse upload 202 response")?;
+                .context("Failed to parse upload 202 response")
+                .map_err(UploadError::Other)?;
             debug!(
                 "Upload accepted, task_id={} — polling for completion",
                 upload_resp.task_id
@@ -245,7 +272,11 @@ impl RepoClient {
 
     /// Poll `GET /api/upload-status/<task_id>/` until the task reaches
     /// `completed` or `failed`, or the maximum number of attempts is exceeded.
-    async fn poll_upload_status(&self, task_id: &str, filename: &str) -> Result<()> {
+    async fn poll_upload_status(
+        &self,
+        task_id: &str,
+        filename: &str,
+    ) -> Result<(), UploadError> {
         let status_url = format!("{}/api/upload-status/{}/", self.base_url, task_id);
 
         for attempt in 1..=UPLOAD_POLL_MAX_ATTEMPTS {
@@ -257,20 +288,22 @@ impl RepoClient {
                 .header("Authorization", self.auth_header())
                 .send()
                 .await
-                .with_context(|| format!("Failed to poll upload status for task {}", task_id))?;
+                .with_context(|| format!("Failed to poll upload status for task {}", task_id))
+                .map_err(UploadError::Other)?;
 
             if !resp.status().is_success() {
-                bail!(
+                return Err(UploadError::Other(anyhow!(
                     "Upload status check failed ({}): task {}",
                     resp.status(),
                     task_id
-                );
+                )));
             }
 
             let task_status: UploadStatusResponse = resp
                 .json()
                 .await
-                .context("Failed to parse upload status response")?;
+                .context("Failed to parse upload status response")
+                .map_err(UploadError::Other)?;
 
             match task_status.status.as_str() {
                 "completed" => {
@@ -281,12 +314,24 @@ impl RepoClient {
                     return Ok(());
                 }
                 "failed" => {
+                    // Check structured error_code first (Phase 1.3+ servers).
+                    if task_status.error_code == code::PACKAGE_EXISTS {
+                        return Err(UploadError::PackageExists);
+                    }
+                    // Backward-compat fallback: older servers set only error_message.
+                    if task_status.error_message.contains("already exists") {
+                        return Err(UploadError::PackageExists);
+                    }
                     let msg = if task_status.error_message.is_empty() {
                         "unknown server error".to_string()
                     } else {
                         task_status.error_message
                     };
-                    bail!("Upload of '{}' failed on server: {}", filename, msg);
+                    return Err(UploadError::Other(anyhow!(
+                        "Upload of '{}' failed on server: {}",
+                        filename,
+                        msg
+                    )));
                 }
                 other => {
                     debug!(
@@ -297,12 +342,12 @@ impl RepoClient {
             }
         }
 
-        bail!(
+        Err(UploadError::Other(anyhow!(
             "Upload of '{}' timed out after {} seconds (task {})",
             filename,
             UPLOAD_POLL_MAX_ATTEMPTS as u64 * POLL_INTERVAL.as_secs(),
             task_id
-        );
+        )))
     }
 
     pub async fn delete_package(&self, repo_uid: &str, package_uid: &str) -> Result<()> {

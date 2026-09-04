@@ -31,30 +31,41 @@ Docker dependency.
 
 ### 1.1 OpenAPI Specification (Server)
 
-**Goal:** Generate a machine-readable API contract from the existing DRF views.
+**Goal:** Generate a machine-readable API contract from the existing DRF views
+using `drf-spectacular`. This is the foundation for typed API clients and
+contract testing between the two repos.
 
-**Files to change:**
+#### Server Code Changes (8 files in openrepo repo)
 
-| File | Change |
-|------|--------|
-| `web/requirements.txt` | Add `drf-spectacular>=0.27` |
-| `web/openrepo/settings.py` | Add `drf-spectacular` to `INSTALLED_APPS`, configure `SPECTACULAR_SETTINGS`, set `DEFAULT_SCHEMA_CLASS` |
-| `web/openrepo/urls.py` | Add `/api/schema/` (YAML) and `/api/docs/` (Swagger UI) endpoints |
-| `web/repo/api/views.py` | Add `@extend_schema()` decorators to fix 4 mismatched views |
-| `web/repo/api/serializers.py` | Add `UploadResponseSerializer`, add `@extend_schema_field` for `result_data` |
+| # | File | Change |
+|---|------|--------|
+| 1 | `web/requirements.txt` | Add `drf-spectacular==0.28.0` |
+| 2 | `web/openrepo/settings.py` | Add `"drf_spectacular"` to `INSTALLED_APPS`; `DEFAULT_SCHEMA_CLASS`; `SPECTACULAR_SETTINGS` |
+| 3 | `web/openrepo/urls.py` | Add `/api/schema/` and `/api/docs/` URL patterns |
+| 4 | `web/repo/api/serializers.py` | Add `UploadResponseSerializer`, `PGPKeyCreateRequestSerializer`, `@extend_schema_field` |
+| 5 | `web/repo/api/views.py` | Add `@extend_schema` decorators on 4-6 views |
+| 6 | `web/repo/tests/test_openapi.py` | **New** — test schema endpoint (~40 lines) |
+| 7 | `.github/workflows/main.yml` | Add schema validation CI step |
+| 8 | `web/dev-requirements.txt` | Add `pyyaml` if needed |
 
-**View fixes needed:**
+#### Documentation Changes in This Repo (7 files)
 
-| View | Problem | Fix |
-|------|---------|-----|
-| `UploadViewSet.create()` | `serializer_class = UploadSerializer` but response is `{"task_id": str}` | Create `UploadResponseSerializer`, add `@extend_schema(request=UploadSerializer, responses={202: UploadResponseSerializer})` |
-| `CopyViewSet.create()` | `serializer_class = CopySerializer` but response is `PackageDetailSerializer` | Add `@extend_schema(request=CopySerializer, responses={200: PackageDetailSerializer})` |
-| `PGPKeysViewSet.create()` | Returns empty 201 body | Add `@extend_schema(responses={201: None})` |
-| `PGPKeysViewSet.download()` | Returns raw `HttpResponse` with `application/pgp-keys` | Add `@extend_schema(responses={(200, "application/pgp-keys"): bytes})` |
+| File | Changes |
+|------|---------|
+| `docs/api.md` | Add note at top linking to server's OpenAPI spec at `/api/schema/` and Swagger UI at `/api/docs/`; resolve all 5 "Open Questions" (lines 295-303) |
+| `README.md` | Update "Requires" callout (line 17) to mention server provides API docs at `/api/docs/` |
+| `CONTRIBUTING.md` | Add row to "What to update" table: "API changes → verify against server OpenAPI spec" |
+| `docs/configuration.md` | Add API docs link after API key mention (line 68) |
+| `CLAUDE.md` | Add note about OpenAPI spec; update known issue #5 (manual JSON parsing) |
+| `ARCHITECTURE_ANALYSIS.md` | Note hardcoded URLs can be validated against spec; note field contracts documented |
+| `DEVELOPMENT_PLAN.md` | Mark 1.1 as completed after implementation |
 
-**New file:** `web/repo/api/schema.py` — Custom `AutoSchema` subclass if needed.
+#### Impact on This Repo
 
-**Validation:** Run `python manage.py spectacular --validate` in CI.
+Once the server exposes an OpenAPI spec:
+- Phase 3.1 (Typed API Client Structs) can derive types from the spec
+- Phase 3.6 (OpenAPI Schema Validation in CI) can validate client structs against it
+- Known issue #5 (manual JSON parsing in `repo_client.rs`) has a clear resolution path
 
 ### 1.2 API Versioning (Server)
 

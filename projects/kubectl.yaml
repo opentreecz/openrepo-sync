@@ -1,0 +1,14 @@
+---
+name: kubectl
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  layout: flat
+  url: https://pkgs.k8s.io/core:/stable:/v1.29/deb
+  architectures: amd64
+  package_filter: kubectl
+  verify_gpg: true
+  gpg_key: https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key

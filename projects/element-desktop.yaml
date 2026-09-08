@@ -1,0 +1,15 @@
+---
+name: element-desktop
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://packages.element.io/debian
+  suites: default
+  components: main
+  architectures: [amd64, arm64]
+  package_filter: element-desktop
+  verify_gpg: true
+  gpg_key: https://packages.element.io/debian/element-io-archive-keyring.gpg

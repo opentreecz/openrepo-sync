@@ -1,0 +1,15 @@
+---
+name: spotify-client
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://repository.spotify.com
+  suites: stable
+  components: non-free
+  architectures: amd64
+  package_filter: spotify-client
+  verify_gpg: true
+  gpg_key: https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc

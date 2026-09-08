@@ -1,0 +1,15 @@
+---
+name: microsoft-edge-stable
+repo_uid: deb
+keep_versions: 1
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://packages.microsoft.com/repos/edge
+  suites: stable
+  components: main
+  architectures: amd64
+  package_filter: microsoft-edge-stable
+  verify_gpg: true
+  gpg_key: https://packages.microsoft.com/keys/microsoft.asc

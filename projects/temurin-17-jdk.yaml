@@ -7,7 +7,7 @@ on_conflict: skip
 source:
   type: deb_repo
   url: https://packages.adoptium.net/artifactory/deb
-  suites: bookworm
+  suites: trixie
   components: main
   architectures: amd64
   package_filter: temurin-17-jdk

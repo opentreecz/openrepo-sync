@@ -7,7 +7,7 @@ on_conflict: skip
 source:
   type: deb_repo
   url: https://download.docker.com/linux/debian
-  suites: bookworm
+  suites: trixie
   components: stable
   architectures: amd64
   package_filter: [docker-ce, docker-ce-cli, containerd.io, docker-buildx-plugin, docker-compose-plugin]

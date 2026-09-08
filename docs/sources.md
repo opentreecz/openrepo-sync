@@ -75,7 +75,7 @@ source:
   url: https://nginx.org/packages/debian   # repository base URL
 
   # Suite(s) to mirror. Single string or list.
-  suites: bookworm                  # default: bookworm
+  suites: trixie                  # default: trixie
 
   # Component(s). Single string or list.
   components: nginx                 # default: main
@@ -102,7 +102,7 @@ source:
 All combinations of `suites × components × architectures` are fetched. Results are deduplicated by filename and each `(package_name, architecture)` group is sorted newest-first before truncation to `keep_versions`.
 
 ```yaml
-suites: [bookworm, bullseye]
+suites: [trixie, bookworm]
 components: [main, contrib]
 architectures: [amd64, arm64]
 # → fetches 2 × 2 × 2 = 8 Packages indexes
@@ -166,7 +166,7 @@ Set `verify_gpg: false` to skip signature verification entirely. When disabled, 
 |---|---|---|---|
 | `url` | Yes | — | Repository base URL |
 | `layout` | No | `debian` | Repository metadata layout: `debian` or `flat` |
-| `suites` | No | `[bookworm]` | Suite(s) — single string or list |
+| `suites` | No | `[trixie]` | Suite(s) — single string or list |
 | `components` | No | `[main]` | Component(s) — single string or list |
 | `architectures` | No | `[amd64]` | Architecture(s) — single string or list |
 | `package_filter` | No | (all packages) | Exact `Package:` field match — single string or list |

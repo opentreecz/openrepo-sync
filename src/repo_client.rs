@@ -272,11 +272,7 @@ impl RepoClient {
 
     /// Poll `GET /api/upload-status/<task_id>/` until the task reaches
     /// `completed` or `failed`, or the maximum number of attempts is exceeded.
-    async fn poll_upload_status(
-        &self,
-        task_id: &str,
-        filename: &str,
-    ) -> Result<(), UploadError> {
+    async fn poll_upload_status(&self, task_id: &str, filename: &str) -> Result<(), UploadError> {
         let status_url = format!("{}/api/upload-status/{}/", self.base_url, task_id);
 
         for attempt in 1..=UPLOAD_POLL_MAX_ATTEMPTS {

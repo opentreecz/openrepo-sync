@@ -23,10 +23,10 @@ source:
   url: https://nginx.org/packages/debian    # Debian repository base URL
 
   # Suite(s) to mirror. Accepts a single string or a list.
-  #   suites: bookworm
-  #   suites: [bookworm, bullseye]
-  # Default: bookworm
-  suites: bookworm
+  #   suites: trixie
+  #   suites: [trixie, bookworm]
+  # Default: trixie
+  suites: trixie
 
   # Repository component(s). Accepts a single string or a list.
   #   components: main

@@ -41,7 +41,7 @@ fn default_arch_filter() -> Vec<String> {
 }
 
 fn default_deb_suites() -> Vec<String> {
-    vec!["bookworm".to_string()]
+    vec!["trixie".to_string()]
 }
 
 fn default_deb_components() -> Vec<String> {
@@ -209,7 +209,7 @@ pub enum SourceConfig {
         /// Repository metadata layout. Default: standard Debian dists/ layout.
         #[serde(default)]
         layout: DebRepoLayout,
-        /// Debian suite(s) to fetch, e.g. "bookworm" or ["bookworm", "bullseye"].
+        /// Debian suite(s) to fetch, e.g. "trixie" or ["trixie", "bookworm"].
         #[serde(
             default = "default_deb_suites",
             deserialize_with = "deserialize_string_or_list"
@@ -607,7 +607,7 @@ source:
         {
             assert_eq!(url, "https://nginx.org/packages/debian");
             assert_eq!(layout, DebRepoLayout::Debian);
-            assert_eq!(suites, vec!["bookworm"]);
+            assert_eq!(suites, vec!["trixie"]);
             assert_eq!(components, vec!["main"]);
             assert_eq!(architectures, vec!["amd64"]);
             assert_eq!(package_filter, vec!["nginx"]);
@@ -629,7 +629,7 @@ source:
   type: deb_repo
   url: "https://nginx.org/packages/debian"
   layout: flat
-  suites: [bookworm, bullseye]
+  suites: [trixie, bookworm]
   components: [main, nginx]
   architectures: [amd64, arm64]
   package_filter: [nginx, libnginx-mod-http-js]
@@ -651,7 +651,7 @@ source:
         } = p.source
         {
             assert_eq!(layout, DebRepoLayout::Flat);
-            assert_eq!(suites, vec!["bookworm", "bullseye"]);
+            assert_eq!(suites, vec!["trixie", "bookworm"]);
             assert_eq!(components, vec!["main", "nginx"]);
             assert_eq!(architectures, vec!["amd64", "arm64"]);
             assert_eq!(package_filter, vec!["nginx", "libnginx-mod-http-js"]);
@@ -694,7 +694,7 @@ keep_versions: 1
 source:
   type: deb_repo
   url: "https://example.com"
-  suites: bookworm
+  suites: trixie
   components: main
   architectures: arm64
 "#;
@@ -706,7 +706,7 @@ source:
             ..
         } = p.source
         {
-            assert_eq!(suites, vec!["bookworm"]);
+            assert_eq!(suites, vec!["trixie"]);
             assert_eq!(components, vec!["main"]);
             assert_eq!(architectures, vec!["arm64"]);
         } else {

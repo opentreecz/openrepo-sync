@@ -7,7 +7,7 @@ on_conflict: skip
 source:
   type: deb_repo
   url: https://apt.releases.hashicorp.com
-  suites: bookworm
+  suites: trixie
   components: main
   architectures: amd64
   package_filter: terraform

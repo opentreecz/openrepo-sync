@@ -420,7 +420,7 @@ mod tests {
         DebRepoSource::new(
             url,
             DebRepoLayout::Debian,
-            vec!["bookworm".to_string()],
+            vec!["trixie".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
             vec![],
@@ -664,7 +664,7 @@ mod tests {
         let err = DebRepoSource::new(
             "https://example.com",
             DebRepoLayout::Debian,
-            vec!["bookworm".to_string()],
+            vec!["trixie".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
             vec![],
@@ -888,8 +888,8 @@ mod tests {
         assert_eq!(pkgs.len(), 1);
 
         let requests = server.requests();
-        assert!(requests[0].starts_with("GET /dists/bookworm/main/binary-amd64/Packages.gz "));
-        assert!(requests[1].starts_with("GET /dists/bookworm/main/binary-amd64/Packages "));
+        assert!(requests[0].starts_with("GET /dists/trixie/main/binary-amd64/Packages.gz "));
+        assert!(requests[1].starts_with("GET /dists/trixie/main/binary-amd64/Packages "));
     }
 
     #[tokio::test]
@@ -1076,7 +1076,7 @@ mod tests {
 
         let err = s.fetch_latest(10).await.unwrap_err();
         assert!(
-            err.to_string().contains("bookworm/main/amd64"),
+            err.to_string().contains("trixie/main/amd64"),
             "unexpected error: {err}"
         );
     }
@@ -1088,7 +1088,7 @@ mod tests {
         let err = DebRepoSource::new(
             "https://example.com",
             DebRepoLayout::Debian,
-            vec!["bookworm".to_string()],
+            vec!["trixie".to_string()],
             vec![],
             vec!["amd64".to_string()],
             vec![],
@@ -1105,7 +1105,7 @@ mod tests {
         let err = DebRepoSource::new(
             "https://example.com",
             DebRepoLayout::Debian,
-            vec!["bookworm".to_string()],
+            vec!["trixie".to_string()],
             vec!["main".to_string()],
             vec![],
             vec![],
@@ -1433,7 +1433,7 @@ mod tests {
         let s = DebRepoSource::new(
             "placeholder",
             DebRepoLayout::Debian,
-            vec!["bookworm".to_string(), "bullseye".to_string()],
+            vec!["trixie".to_string(), "bookworm".to_string()],
             vec!["main".to_string()],
             vec!["amd64".to_string()],
             vec![],
@@ -1457,10 +1457,10 @@ mod tests {
         )]);
 
         let server = MockServer::start(vec![
-            // bookworm: Packages.gz 404, Packages OK
+            // trixie: Packages.gz 404, Packages OK
             MockResponse::json(404, "not found"),
             MockResponse::json(200, &body1),
-            // bullseye: Packages.gz 404, Packages OK
+            // bookworm: Packages.gz 404, Packages OK
             MockResponse::json(404, "not found"),
             MockResponse::json(200, &body2),
         ]);

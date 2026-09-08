@@ -112,7 +112,7 @@ source:
   type: deb_repo
   url: https://nginx.org/packages/debian
   layout: debian                            # default: debian; use flat for OBS-style repos
-  suites: bookworm                            # default: [bookworm]
+  suites: trixie                              # default: [trixie]
   components: nginx                           # default: [main]
   architectures: [amd64, arm64]               # default: [amd64]
   package_filter: nginx                       # optional; string or list

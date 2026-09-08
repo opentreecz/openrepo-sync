@@ -100,9 +100,7 @@ async fn sync_project_inner(
                             version: remote.version.clone(),
                         });
                     }
-                    Err(UploadError::PackageExists)
-                        if project.on_conflict == OnConflict::Skip =>
-                    {
+                    Err(UploadError::PackageExists) if project.on_conflict == OnConflict::Skip => {
                         info!(
                             "[{}] Skipping {} — already exists in repository",
                             project.name, remote.filename
@@ -349,7 +347,10 @@ fn verify_sha256_path(path: &Path, expected: Option<&str>) -> Result<()> {
 
 fn verify_sha256_bytes(bytes: &[u8], expected: Option<&str>) -> Result<()> {
     if let Some(expected) = expected {
-        let actual = format!("{:x}", Sha256::digest(bytes));
+        let actual: String = Sha256::digest(bytes)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let expected = expected.trim().to_ascii_lowercase();
         if actual != expected {
             bail!("SHA-256 mismatch: expected {}, got {}", expected, actual);
@@ -903,7 +904,10 @@ mod tests {
     #[tokio::test]
     async fn download_package_verifies_http_sha256() {
         let body = b"deb-bytes".to_vec();
-        let sha256 = format!("{:x}", Sha256::digest(&body));
+        let sha256: String = Sha256::digest(&body)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
         let server = MockServer::start(vec![MockResponse::bytes(200, body, &[])]);
         let remote = RemotePackage {
             filename: "tool-1.0.0.deb".to_string(),
@@ -941,7 +945,10 @@ mod tests {
         let staging = tempfile::tempdir().unwrap();
         let pkg_path = staging.path().join("tool-1.0.0.deb");
         std::fs::write(&pkg_path, b"bytes").unwrap();
-        let sha256 = format!("{:x}", Sha256::digest(b"bytes"));
+        let sha256: String = Sha256::digest(b"bytes")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
 
         let remote = RemotePackage {
             filename: "tool-1.0.0.deb".to_string(),

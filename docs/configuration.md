@@ -191,6 +191,7 @@ The `projects/` directory in the repository contains one ready-to-copy template 
 |---|---|
 | `github-example.yaml.example` | `github` |
 | `deb-repo-example.yaml.example` | `deb_repo` |
+| `rpm-repo-example.yaml.example` | `rpm_repo` |
 | `direct-url-example.yaml.example` | `direct_url` |
 | `direct-url-latest-example.yaml.example` | `direct_url_latest` |
 | `sourceforge-example.yaml.example` | `sourceforge` |

@@ -316,12 +316,18 @@ src/
     ├── deb_repo.rs      Debian APT repository (Packages index)
     ├── direct_url.rs    Static URL and LATEST URL sources
     ├── github.rs        GitHub Releases API
+    ├── rpm_repo.rs      RPM (YUM/DNF) repository (repomd.xml)
     └── sourceforge.rs   SourceForge file listing scraper
 projects/
+├── claude.yaml                                Claude Desktop (deb_repo)
+├── signal-desktop.yaml                        Signal Desktop (deb_repo)
+├── vscode.yaml                                VS Code (direct_url_latest)
+├── ...                                        35+ ready-to-use project files
 ├── deb-repo-example.yaml.example
 ├── direct-url-example.yaml.example
 ├── direct-url-latest-example.yaml.example
 ├── github-example.yaml.example
+├── rpm-repo-example.yaml.example
 └── sourceforge-example.yaml.example
 ```
 

@@ -213,6 +213,7 @@ src/
     mod.rs          — Source trait
     github.rs       — GitHub Releases source
     deb_repo.rs     — Debian APT repository source
+    rpm_repo.rs     — RPM (YUM/DNF) repository source
     direct_url.rs   — Static/LATEST URL sources
     sourceforge.rs  — SourceForge source
 ```

@@ -10,6 +10,7 @@ use crate::config::SourceConfig;
 use crate::errors::UploadError;
 use crate::models::{RemotePackage, SyncAction, SyncResult};
 use crate::repo_client::RepoClient;
+use crate::sources::AnySource;
 use crate::sources::{
     deb_repo::DebRepoSource, direct_url::DirectUrlSource, github::GithubSource,
     rpm_repo::RpmRepoSource, sourceforge::SourceforgeSource,
@@ -212,49 +213,42 @@ fn prune_candidates(
     to_delete
 }
 
-async fn fetch_upstream(
-    project: &ProjectConfig,
-    http_client: &reqwest::Client,
-) -> Result<Vec<RemotePackage>> {
-    match &project.source {
+/// Build an [`AnySource`] from the project's source configuration.
+fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<AnySource> {
+    match config {
         SourceConfig::Github {
             owner,
             repo,
             asset_filter,
             prerelease,
             arch_filter,
-        } => {
-            let source = GithubSource::new(
-                owner,
-                repo,
-                asset_filter.as_deref(),
-                *prerelease,
-                arch_filter.clone(),
-                http_client.clone(),
-            )?;
-            source.fetch_latest(project.keep_versions).await
-        }
-        SourceConfig::DirectUrl { url, sha256 } => {
-            let source = DirectUrlSource::new(url, false, sha256.as_deref(), http_client.clone())?;
-            source.fetch_latest(1).await
-        }
-        SourceConfig::DirectUrlLatest { url, sha256 } => {
-            let source = DirectUrlSource::new(url, true, sha256.as_deref(), http_client.clone())?;
-            source.fetch_latest(1).await
-        }
+        } => Ok(AnySource::Github(GithubSource::new(
+            owner,
+            repo,
+            asset_filter.as_deref(),
+            *prerelease,
+            arch_filter.clone(),
+            http_client.clone(),
+        )?)),
+        SourceConfig::DirectUrl { url, sha256 } => Ok(AnySource::DirectUrl(DirectUrlSource::new(
+            url,
+            false,
+            sha256.as_deref(),
+            http_client.clone(),
+        )?)),
+        SourceConfig::DirectUrlLatest { url, sha256 } => Ok(AnySource::DirectUrl(
+            DirectUrlSource::new(url, true, sha256.as_deref(), http_client.clone())?,
+        )),
         SourceConfig::Sourceforge {
             project: sf_project,
             folder,
             filename_filter,
-        } => {
-            let source = SourceforgeSource::new(
-                sf_project,
-                folder.as_deref(),
-                filename_filter.as_deref(),
-                http_client.clone(),
-            )?;
-            source.fetch_latest(project.keep_versions).await
-        }
+        } => Ok(AnySource::Sourceforge(SourceforgeSource::new(
+            sf_project,
+            folder.as_deref(),
+            filename_filter.as_deref(),
+            http_client.clone(),
+        )?)),
         SourceConfig::DebRepo {
             url,
             layout,
@@ -265,21 +259,18 @@ async fn fetch_upstream(
             filename_filter,
             verify_gpg,
             gpg_key,
-        } => {
-            let source = DebRepoSource::new(
-                url,
-                layout.clone(),
-                suites.clone(),
-                components.clone(),
-                architectures.clone(),
-                package_filter.clone(),
-                filename_filter.as_deref(),
-                *verify_gpg,
-                gpg_key.as_deref(),
-                http_client.clone(),
-            )?;
-            source.fetch_latest(project.keep_versions).await
-        }
+        } => Ok(AnySource::DebRepo(DebRepoSource::new(
+            url,
+            layout.clone(),
+            suites.clone(),
+            components.clone(),
+            architectures.clone(),
+            package_filter.clone(),
+            filename_filter.as_deref(),
+            *verify_gpg,
+            gpg_key.as_deref(),
+            http_client.clone(),
+        )?)),
         SourceConfig::RpmRepo {
             url,
             package_filter,
@@ -287,19 +278,28 @@ async fn fetch_upstream(
             verify_gpg,
             gpg_key,
             architectures,
-        } => {
-            let source = RpmRepoSource::new(
-                url,
-                package_filter.clone(),
-                filename_filter.as_deref(),
-                *verify_gpg,
-                gpg_key.as_deref(),
-                architectures.clone(),
-                http_client.clone(),
-            )?;
-            source.fetch_latest(project.keep_versions).await
-        }
+        } => Ok(AnySource::RpmRepo(RpmRepoSource::new(
+            url,
+            package_filter.clone(),
+            filename_filter.as_deref(),
+            *verify_gpg,
+            gpg_key.as_deref(),
+            architectures.clone(),
+            http_client.clone(),
+        )?)),
     }
+}
+
+async fn fetch_upstream(
+    project: &ProjectConfig,
+    http_client: &reqwest::Client,
+) -> Result<Vec<RemotePackage>> {
+    let source = build_source(&project.source, http_client)?;
+    let n = match &project.source {
+        SourceConfig::DirectUrl { .. } | SourceConfig::DirectUrlLatest { .. } => 1,
+        _ => project.keep_versions,
+    };
+    source.fetch_latest(n).await
 }
 
 async fn download_package(

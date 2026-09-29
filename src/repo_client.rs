@@ -5,7 +5,7 @@ use reqwest::{
 };
 use serde::Deserialize;
 use std::path::Path;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::errors::{ApiError, UploadError, code};
 use crate::models::{PackageVersion, RepoPackage};
@@ -48,6 +48,28 @@ struct UploadStatusResponse {
     /// Empty string on older servers.
     #[serde(default)]
     error_code: String,
+}
+
+/// Typed response envelope for DRF's paginated list endpoints.
+#[derive(Debug, Deserialize)]
+struct PaginatedResponse<T> {
+    results: Vec<T>,
+    next: Option<String>,
+}
+
+/// A single package entry returned by `GET /api/{repo_uid}/packages/`.
+#[derive(Debug, Deserialize)]
+struct ApiPackage {
+    #[serde(default)]
+    package_uid: String,
+    #[serde(default)]
+    package_name: String,
+    #[serde(default)]
+    filename: String,
+    #[serde(default)]
+    architecture: String,
+    #[serde(default)]
+    version: String,
 }
 
 impl RepoClient {
@@ -115,64 +137,33 @@ impl RepoClient {
                 );
             }
 
-            let body: serde_json::Value = resp
+            let page: PaginatedResponse<ApiPackage> = resp
                 .json()
                 .await
                 .context("Failed to parse package list response")?;
 
-            match body.get("results").and_then(|r| r.as_array()) {
-                Some(results) => {
-                    debug!("Got {} packages in this page", results.len());
-                    for pkg in results {
-                        let package_uid = pkg
-                            .get("package_uid")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        let package_name = pkg
-                            .get("package_name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        let filename = pkg
-                            .get("filename")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(package_name.as_str())
-                            .to_string();
-                        let architecture = pkg
-                            .get("architecture")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        let version = pkg
-                            .get("version")
-                            .and_then(|v| v.as_str())
-                            .map(PackageVersion::parse)
-                            .or_else(|| extract_version_from_filename(&filename))
-                            .unwrap_or(PackageVersion::Raw("0".to_string()));
-                        packages.push(RepoPackage {
-                            package_uid,
-                            filename,
-                            package_name,
-                            architecture,
-                            version,
-                        });
-                    }
-                    page_url = body
-                        .get("next")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string());
-                }
-                None => {
-                    warn!(
-                        "Unexpected response format from packages endpoint for '{}' — \
-                         expected {{\"results\": [...]}}, got: {}",
-                        repo_uid,
-                        body.to_string().chars().take(200).collect::<String>()
-                    );
-                    break;
-                }
+            debug!("Got {} packages in this page", page.results.len());
+            for pkg in &page.results {
+                let filename = if pkg.filename.is_empty() {
+                    pkg.package_name.clone()
+                } else {
+                    pkg.filename.clone()
+                };
+                let version = if pkg.version.is_empty() {
+                    extract_version_from_filename(&filename)
+                        .unwrap_or(PackageVersion::Raw("0".to_string()))
+                } else {
+                    PackageVersion::parse(&pkg.version)
+                };
+                packages.push(RepoPackage {
+                    package_uid: pkg.package_uid.clone(),
+                    filename,
+                    package_name: pkg.package_name.clone(),
+                    architecture: pkg.architecture.clone(),
+                    version,
+                });
             }
+            page_url = page.next;
         }
 
         Ok(packages)
@@ -501,11 +492,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_packages_unexpected_format_yields_empty() {
+    async fn list_packages_unexpected_format_returns_error() {
         let server = MockServer::start(vec![MockResponse::json(200, r#"{"foo":"bar"}"#)]);
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
-        let pkgs = client.list_packages("r").await.unwrap();
-        assert!(pkgs.is_empty());
+        let err = client.list_packages("r").await.unwrap_err();
+        assert!(err.to_string().contains("Failed to parse package list"));
     }
 
     #[tokio::test]

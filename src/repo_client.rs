@@ -50,24 +50,8 @@ struct UploadStatusResponse {
     error_code: String,
 }
 
-#[allow(dead_code)]
-struct PackageListResponse {
-    results: Vec<PackageEntry>,
-    next: Option<String>,
-}
-
-#[allow(dead_code)]
-struct PackageEntry {
-    package_uid: String,
-    package_name: String,
-}
-
 impl RepoClient {
-    pub fn new(base_url: &str, api_key: &str) -> Result<Self> {
-        let client = Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()
-            .context("Failed to create HTTP client")?;
+    pub fn new(base_url: &str, api_key: &str, client: Client) -> Result<Self> {
         Ok(Self {
             base_url: base_url.trim_end_matches('/').to_string(),
             api_key: api_key.to_string(),
@@ -369,17 +353,17 @@ impl RepoClient {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{MockResponse, MockServer};
+    use crate::test_util::{MockResponse, MockServer, test_client};
 
     #[test]
     fn new_trims_trailing_slash_from_base_url() {
-        let client = RepoClient::new("https://repo.example.com/", "key").unwrap();
+        let client = RepoClient::new("https://repo.example.com/", "key", test_client()).unwrap();
         assert_eq!(client.base_url, "https://repo.example.com");
     }
 
     #[test]
     fn auth_header_uses_token_scheme() {
-        let client = RepoClient::new("https://repo.example.com", "s3cret").unwrap();
+        let client = RepoClient::new("https://repo.example.com", "s3cret", test_client()).unwrap();
         assert_eq!(client.auth_header(), "Token s3cret");
     }
 
@@ -388,7 +372,7 @@ mod tests {
     #[tokio::test]
     async fn whoami_returns_username_and_sends_auth() {
         let server = MockServer::start(vec![MockResponse::json(200, r#"{"username":"alice"}"#)]);
-        let client = RepoClient::new(&server.url, "k1").unwrap();
+        let client = RepoClient::new(&server.url, "k1", test_client()).unwrap();
         let user = client.whoami().await.unwrap();
         assert_eq!(user, "alice");
 
@@ -400,7 +384,7 @@ mod tests {
     #[tokio::test]
     async fn whoami_unauthorized_is_a_clear_error() {
         let server = MockServer::start(vec![MockResponse::json(401, "{}")]);
-        let client = RepoClient::new(&server.url, "bad").unwrap();
+        let client = RepoClient::new(&server.url, "bad", test_client()).unwrap();
         let err = client.whoami().await.unwrap_err();
         assert!(err.to_string().contains("authentication failed"));
     }
@@ -408,7 +392,7 @@ mod tests {
     #[tokio::test]
     async fn whoami_server_error_reports_status() {
         let server = MockServer::start(vec![MockResponse::json(500, "{}")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.whoami().await.unwrap_err();
         assert!(err.to_string().contains("whoami request failed"));
     }
@@ -416,7 +400,7 @@ mod tests {
     #[tokio::test]
     async fn whoami_invalid_json_is_a_parse_error() {
         let server = MockServer::start(vec![MockResponse::json(200, "not-json")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.whoami().await.unwrap_err();
         assert!(err.to_string().contains("parse"));
     }
@@ -430,7 +414,7 @@ mod tests {
             {"package_uid":"u2","package_name":"noversion","filename":"noversion.deb","architecture":"all"}
         ],"next":null}"#;
         let server = MockServer::start(vec![MockResponse::json(200, body)]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let pkgs = client.list_packages("myrepo").await.unwrap();
 
         assert_eq!(pkgs.len(), 2);
@@ -459,7 +443,7 @@ mod tests {
         // → empty list → duplicate uploads.
         let body = r#"{"results":[],"next":null}"#;
         let server = MockServer::start(vec![MockResponse::json(200, body)]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let _ = client.list_packages("deb").await.unwrap();
 
         let requests = server.requests();
@@ -495,7 +479,7 @@ mod tests {
                 ),
             ]
         });
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let pkgs = client.list_packages("r").await.unwrap();
         assert_eq!(pkgs.len(), 2);
         assert_eq!(pkgs[0].package_uid, "u1");
@@ -507,7 +491,7 @@ mod tests {
         // A 404 means the repo doesn't exist on the server — it must NOT
         // be silently treated as "empty repo" (that caused duplicate uploads).
         let server = MockServer::start(vec![MockResponse::json(404, "{}")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.list_packages("missing").await.unwrap_err();
         assert!(
             err.to_string().contains("404"),
@@ -519,7 +503,7 @@ mod tests {
     #[tokio::test]
     async fn list_packages_unexpected_format_yields_empty() {
         let server = MockServer::start(vec![MockResponse::json(200, r#"{"foo":"bar"}"#)]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let pkgs = client.list_packages("r").await.unwrap();
         assert!(pkgs.is_empty());
     }
@@ -527,7 +511,7 @@ mod tests {
     #[tokio::test]
     async fn list_packages_server_error_fails() {
         let server = MockServer::start(vec![MockResponse::json(500, "boom")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.list_packages("r").await.unwrap_err();
         assert!(err.to_string().contains("Failed to list packages"));
     }
@@ -542,7 +526,7 @@ mod tests {
 
         // Server returns 200 (legacy sync response — no async polling needed)
         let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.upload_package("myrepo", &path, false).await.unwrap();
 
         let requests = server.requests();
@@ -563,7 +547,7 @@ mod tests {
         let path = dir.path().join("tool-1.0.0.deb");
         std::fs::write(&path, b"fake").unwrap();
 
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.upload_package("r", &path, false).await.unwrap();
 
         let requests = server.requests();
@@ -589,7 +573,7 @@ mod tests {
         let path = dir.path().join("tool-1.0.0.deb");
         std::fs::write(&path, b"fake").unwrap();
 
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.upload_package("r", &path, false).await.unwrap_err();
         let msg = err.to_string();
         assert!(
@@ -611,7 +595,7 @@ mod tests {
         let path = dir.path().join("tool-1.0.0.deb");
         std::fs::write(&path, b"fake").unwrap();
 
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.upload_package("r", &path, false).await.unwrap();
 
         let requests = server.requests();
@@ -625,7 +609,7 @@ mod tests {
         std::fs::write(&path, b"fake").unwrap();
 
         let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.upload_package("r", &path, true).await.unwrap();
 
         let requests = server.requests();
@@ -639,7 +623,7 @@ mod tests {
         std::fs::write(&path, b"fake").unwrap();
 
         let server = MockServer::start(vec![MockResponse::json(400, "duplicate package")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.upload_package("r", &path, false).await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("400"));
@@ -648,7 +632,7 @@ mod tests {
 
     #[tokio::test]
     async fn upload_package_missing_file_fails_before_request() {
-        let client = RepoClient::new("http://127.0.0.1:1", "k").unwrap();
+        let client = RepoClient::new("http://127.0.0.1:1", "k", test_client()).unwrap();
         let err = client
             .upload_package("r", Path::new("/nonexistent/file.deb"), false)
             .await
@@ -661,7 +645,7 @@ mod tests {
     #[tokio::test]
     async fn delete_package_hits_pkg_endpoint() {
         let server = MockServer::start(vec![MockResponse::json(200, "")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.delete_package("myrepo", "uid-42").await.unwrap();
 
         let requests = server.requests();
@@ -671,7 +655,7 @@ mod tests {
     #[tokio::test]
     async fn delete_package_failure_includes_status_and_body() {
         let server = MockServer::start(vec![MockResponse::json(403, "forbidden")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let err = client.delete_package("r", "u").await.unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("403"));
@@ -693,7 +677,7 @@ mod tests {
             responses.push(MockResponse::json(200, processing));
         }
         let server = MockServer::start(responses);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
         let pkg_path = tmp.path().join("test.deb");
@@ -715,7 +699,7 @@ mod tests {
             MockResponse::json(202, r#"{"task_id":"task-fail-test"}"#),
             MockResponse::json(200, r#"{"status":"failed","error_message":"disk full"}"#),
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
         let pkg_path = tmp.path().join("test.deb");

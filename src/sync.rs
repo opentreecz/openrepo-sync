@@ -18,6 +18,7 @@ use crate::sources::{
 pub async fn sync_project(
     project: &ProjectConfig,
     client: &RepoClient,
+    http_client: &reqwest::Client,
     download_dir: &Path,
     dry_run: bool,
 ) -> SyncResult {
@@ -26,7 +27,7 @@ pub async fn sync_project(
         actions: Vec::new(),
     };
 
-    match sync_project_inner(project, client, download_dir, dry_run).await {
+    match sync_project_inner(project, client, http_client, download_dir, dry_run).await {
         Ok(actions) => result.actions = actions,
         Err(e) => {
             warn!("[{}] Error: {:#}", project.name, e);
@@ -39,13 +40,14 @@ pub async fn sync_project(
 async fn sync_project_inner(
     project: &ProjectConfig,
     client: &RepoClient,
+    http_client: &reqwest::Client,
     download_dir: &Path,
     dry_run: bool,
 ) -> Result<Vec<SyncAction>> {
     let mut actions = Vec::new();
 
     info!("[{}] Fetching upstream packages...", project.name);
-    let remote_packages = fetch_upstream(project).await?;
+    let remote_packages = fetch_upstream(project, http_client).await?;
     debug!(
         "[{}] Found {} upstream packages",
         project.name,
@@ -88,7 +90,7 @@ async fn sync_project_inner(
                 project.name, remote.filename, remote.version
             );
             if !dry_run {
-                let path = download_package(remote, download_dir).await?;
+                let path = download_package(remote, download_dir, http_client).await?;
                 let overwrite = project.on_conflict == OnConflict::Overwrite;
                 let upload_result = client
                     .upload_package(&project.repo_uid, &path, overwrite)
@@ -210,7 +212,10 @@ fn prune_candidates(
     to_delete
 }
 
-async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
+async fn fetch_upstream(
+    project: &ProjectConfig,
+    http_client: &reqwest::Client,
+) -> Result<Vec<RemotePackage>> {
     match &project.source {
         SourceConfig::Github {
             owner,
@@ -225,15 +230,16 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
                 asset_filter.as_deref(),
                 *prerelease,
                 arch_filter.clone(),
+                http_client.clone(),
             )?;
             source.fetch_latest(project.keep_versions).await
         }
         SourceConfig::DirectUrl { url, sha256 } => {
-            let source = DirectUrlSource::new(url, false, sha256.as_deref())?;
+            let source = DirectUrlSource::new(url, false, sha256.as_deref(), http_client.clone())?;
             source.fetch_latest(1).await
         }
         SourceConfig::DirectUrlLatest { url, sha256 } => {
-            let source = DirectUrlSource::new(url, true, sha256.as_deref())?;
+            let source = DirectUrlSource::new(url, true, sha256.as_deref(), http_client.clone())?;
             source.fetch_latest(1).await
         }
         SourceConfig::Sourceforge {
@@ -241,8 +247,12 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
             folder,
             filename_filter,
         } => {
-            let source =
-                SourceforgeSource::new(sf_project, folder.as_deref(), filename_filter.as_deref())?;
+            let source = SourceforgeSource::new(
+                sf_project,
+                folder.as_deref(),
+                filename_filter.as_deref(),
+                http_client.clone(),
+            )?;
             source.fetch_latest(project.keep_versions).await
         }
         SourceConfig::DebRepo {
@@ -266,6 +276,7 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
                 filename_filter.as_deref(),
                 *verify_gpg,
                 gpg_key.as_deref(),
+                http_client.clone(),
             )?;
             source.fetch_latest(project.keep_versions).await
         }
@@ -284,6 +295,7 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
                 *verify_gpg,
                 gpg_key.as_deref(),
                 architectures.clone(),
+                http_client.clone(),
             )?;
             source.fetch_latest(project.keep_versions).await
         }
@@ -293,6 +305,7 @@ async fn fetch_upstream(project: &ProjectConfig) -> Result<Vec<RemotePackage>> {
 async fn download_package(
     remote: &RemotePackage,
     download_dir: &Path,
+    http_client: &reqwest::Client,
 ) -> Result<std::path::PathBuf> {
     // file:// URLs are already on disk (from DirectUrlLatest pre-download)
     if let Some(path_str) = remote.download_url.strip_prefix("file://") {
@@ -314,10 +327,7 @@ async fn download_package(
     let dest = download_dir.join(&remote.filename);
     debug!("Downloading {} -> {}", remote.download_url, dest.display());
 
-    let client = reqwest::Client::builder()
-        .user_agent("openrepo-sync/0.1")
-        .build()?;
-    let resp = client
+    let resp = http_client
         .get(&remote.download_url)
         .send()
         .await
@@ -363,7 +373,7 @@ fn verify_sha256_bytes(bytes: &[u8], expected: Option<&str>) -> Result<()> {
 mod tests {
     use super::*;
     use crate::models::PackageVersion;
-    use crate::test_util::{MockResponse, MockServer};
+    use crate::test_util::{MockResponse, MockServer, test_client};
     use sha2::{Digest, Sha256};
 
     fn project(url: &str, keep_versions: usize, on_conflict: OnConflict) -> ProjectConfig {
@@ -415,11 +425,11 @@ mod tests {
     #[tokio::test]
     async fn dry_run_new_package_reports_uploaded_without_requests() {
         let server = MockServer::start(vec![empty_list()]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert_eq!(result.project_name, "testproj");
         assert_eq!(result.actions.len(), 1);
@@ -432,11 +442,11 @@ mod tests {
     #[tokio::test]
     async fn already_present_filename_is_up_to_date() {
         let server = MockServer::start(vec![list_of(&[("u1", "tool-1.0.0.deb")])]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
@@ -446,11 +456,11 @@ mod tests {
     async fn same_version_different_filename_is_up_to_date() {
         // Repo has the same 1.0.0 under a different filename — version dedup.
         let server = MockServer::start(vec![list_of(&[("u1", "tool_1.0.0_amd64.deb")])]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
     }
@@ -460,11 +470,11 @@ mod tests {
         // Both repo and remote resolve to raw version "0": the version match
         // must NOT suppress the upload — only an identical filename would.
         let server = MockServer::start(vec![list_of(&[("u1", "noversion.deb")])]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/other.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert!(matches!(&result.actions[0], SyncAction::Uploaded { .. }));
     }
@@ -476,12 +486,12 @@ mod tests {
             ("u2", "tool-2.0.0.deb"),
             ("u3", "tool-3.0.0.deb"),
         ])]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         // Remote 3.0.0 already present → UpToDate, then prune down to 1.
         let p = project("https://example.com/tool-3.0.0.deb", 1, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert_eq!(result.actions.len(), 2);
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
@@ -570,7 +580,7 @@ mod tests {
             ]),
             MockResponse::json(200, "{}"),
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project(
@@ -578,7 +588,7 @@ mod tests {
             2,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, dir.path(), false).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
 
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
         assert!(matches!(
@@ -678,7 +688,7 @@ mod tests {
             MockResponse::json(200, r#"{"status":"completed","error_message":""}"#), // status poll
             empty_list(),                                   // refresh listing after upload
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project(
@@ -686,7 +696,7 @@ mod tests {
             5,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, dir.path(), false).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -717,7 +727,7 @@ mod tests {
             ),
             empty_list(),
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project(
@@ -725,7 +735,7 @@ mod tests {
             5,
             OnConflict::Skip,
         );
-        let result = sync_project(&p, &client, dir.path(), false).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -749,7 +759,7 @@ mod tests {
             ),
             empty_list(),
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project(
@@ -757,7 +767,7 @@ mod tests {
             5,
             OnConflict::Skip,
         );
-        let result = sync_project(&p, &client, dir.path(), false).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -780,7 +790,7 @@ mod tests {
                 r#"{"status":"failed","error_message":"Package tool already exists in destination repo r and 'overwrite' is not specified"}"#,
             ),
         ]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project(
@@ -788,7 +798,7 @@ mod tests {
             5,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, dir.path(), false).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
 
         assert_eq!(result.actions.len(), 1);
         match &result.actions[0] {
@@ -802,11 +812,11 @@ mod tests {
     #[tokio::test]
     async fn listing_failure_becomes_error_action() {
         let server = MockServer::start(vec![MockResponse::json(500, "boom")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert!(matches!(&result.actions[0], SyncAction::Error(_)));
     }
@@ -816,11 +826,11 @@ mod tests {
         // Regression: 404 on listing must NOT silently return empty — it
         // must be reported as an error to prevent duplicate uploads.
         let server = MockServer::start(vec![MockResponse::json(404, "{}")]);
-        let client = RepoClient::new(&server.url, "k").unwrap();
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, dir.path(), true).await;
+        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
 
         assert!(matches!(&result.actions[0], SyncAction::Error(_)));
         if let SyncAction::Error(msg) = &result.actions[0] {
@@ -849,7 +859,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let path = download_package(&remote, dir.path()).await.unwrap();
+        let path = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap();
         assert_eq!(path, pkg_path);
     }
 
@@ -864,7 +876,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let err = download_package(&remote, dir.path()).await.unwrap_err();
+        let err = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("not found on disk"));
     }
 
@@ -880,7 +894,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let path = download_package(&remote, dir.path()).await.unwrap();
+        let path = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap();
         assert_eq!(path, dir.path().join("tool-1.0.0.deb"));
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "deb-bytes");
     }
@@ -897,7 +913,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let err = download_package(&remote, dir.path()).await.unwrap_err();
+        let err = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("Download request error"));
     }
 
@@ -918,7 +936,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let path = download_package(&remote, dir.path()).await.unwrap();
+        let path = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"deb-bytes");
     }
 
@@ -936,7 +956,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let err = download_package(&remote, dir.path()).await.unwrap_err();
+        let err = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("SHA-256 mismatch"));
     }
 
@@ -959,7 +981,9 @@ mod tests {
             architecture: None,
         };
         let dir = tempfile::tempdir().unwrap();
-        let path = download_package(&remote, dir.path()).await.unwrap();
+        let path = download_package(&remote, dir.path(), &test_client())
+            .await
+            .unwrap();
         assert_eq!(path, pkg_path);
     }
 }

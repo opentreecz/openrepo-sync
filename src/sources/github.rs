@@ -45,13 +45,11 @@ impl GithubSource {
         asset_filter: Option<&str>,
         prerelease: bool,
         arch_filter: Vec<String>,
+        client: reqwest::Client,
     ) -> Result<Self> {
         let pattern = asset_filter
             .map(|f| glob::Pattern::new(f).context("Invalid asset_filter glob pattern"))
             .transpose()?;
-        let client = reqwest::Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()?;
         Ok(Self {
             owner: owner.to_string(),
             repo: repo.to_string(),
@@ -202,6 +200,7 @@ impl GithubSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::test_client;
 
     fn asset(name: &str) -> ReleaseAsset {
         ReleaseAsset {
@@ -226,7 +225,15 @@ mod tests {
     }
 
     fn new_no_arch(asset_filter: Option<&str>, prerelease: bool) -> GithubSource {
-        GithubSource::new("acme", "tool", asset_filter, prerelease, vec![]).unwrap()
+        GithubSource::new(
+            "acme",
+            "tool",
+            asset_filter,
+            prerelease,
+            vec![],
+            test_client(),
+        )
+        .unwrap()
     }
 
     fn new_default_arch() -> GithubSource {
@@ -236,13 +243,15 @@ mod tests {
             None,
             false,
             vec!["amd64".to_string(), "arm64".to_string()],
+            test_client(),
         )
         .unwrap()
     }
 
     #[test]
     fn invalid_asset_filter_is_rejected() {
-        let err = GithubSource::new("acme", "tool", Some("[bad"), false, vec![]).unwrap_err();
+        let err = GithubSource::new("acme", "tool", Some("[bad"), false, vec![], test_client())
+            .unwrap_err();
         assert!(err.to_string().contains("Invalid asset_filter"));
     }
 
@@ -387,8 +396,15 @@ mod tests {
     #[test]
     fn arch_filter_x86_64_alias_matches_amd64_entry() {
         // An asset named with "x86_64" should match an arch_filter entry of "amd64".
-        let source =
-            GithubSource::new("acme", "tool", None, false, vec!["amd64".to_string()]).unwrap();
+        let source = GithubSource::new(
+            "acme",
+            "tool",
+            None,
+            false,
+            vec!["amd64".to_string()],
+            test_client(),
+        )
+        .unwrap();
         let pkgs = collect(
             &source,
             vec![release(
@@ -415,6 +431,7 @@ mod tests {
             None,
             false,
             vec!["arm64".to_string(), "amd64".to_string()],
+            test_client(),
         )
         .unwrap();
         let pkgs = collect(
@@ -504,6 +521,7 @@ mod tests {
             None,
             false,
             vec!["amd64".to_string(), "arm64".to_string()],
+            test_client(),
         )
         .unwrap();
         let pkgs = collect(
@@ -535,7 +553,7 @@ mod tests {
             MockResponse::json(200, page1),
             MockResponse::json(200, "[]"), // second page empty → stop
         ]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![])
+        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -554,7 +572,7 @@ mod tests {
             "assets":[{"name":"tool.deb","browser_download_url":"https://x/tool.deb"}]}]"#;
         // Only one response: reaching n on page 1 must not request page 2.
         let server = MockServer::start(vec![MockResponse::json(200, page1)]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![])
+        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -566,7 +584,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_api_error_fails() {
         let server = MockServer::start(vec![MockResponse::json(500, "{}")]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![])
+        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -577,7 +595,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_invalid_json_fails() {
         let server = MockServer::start(vec![MockResponse::json(200, "not-json")]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![])
+        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 

@@ -94,13 +94,11 @@ impl RpmRepoSource {
         verify_gpg: bool,
         gpg_key: Option<&str>,
         architectures: Vec<String>,
+        client: reqwest::Client,
     ) -> Result<Self> {
         let pattern = filename_filter
             .map(|f| glob::Pattern::new(f).context("Invalid filename_filter glob pattern"))
             .transpose()?;
-        let client = reqwest::Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()?;
         Ok(Self {
             url: url.trim_end_matches('/').to_string(),
             package_filter,
@@ -519,7 +517,7 @@ impl RpmRepoSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_util::{MockResponse, MockServer};
+    use crate::test_util::{MockResponse, MockServer, test_client};
 
     fn source(url: &str) -> RpmRepoSource {
         RpmRepoSource::new(
@@ -529,6 +527,7 @@ mod tests {
             false,
             None,
             vec!["x86_64".to_string(), "noarch".to_string()],
+            test_client(),
         )
         .unwrap()
     }
@@ -750,6 +749,7 @@ mod tests {
             false,
             None,
             vec!["x86_64".to_string()],
+            test_client(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("Invalid filename_filter"));

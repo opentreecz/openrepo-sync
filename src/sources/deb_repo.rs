@@ -33,6 +33,7 @@ impl DebRepoSource {
         filename_filter: Option<&str>,
         verify_gpg: bool,
         gpg_key: Option<&str>,
+        client: reqwest::Client,
     ) -> Result<Self> {
         if layout == DebRepoLayout::Debian && suites.is_empty() {
             bail!("deb_repo: suites must not be empty");
@@ -46,9 +47,6 @@ impl DebRepoSource {
         let pattern = filename_filter
             .map(|f| glob::Pattern::new(f).context("Invalid filename_filter glob pattern"))
             .transpose()?;
-        let client = reqwest::Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()?;
         Ok(Self {
             url: url.trim_end_matches('/').to_string(),
             layout,
@@ -415,6 +413,7 @@ impl DebRepoSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::test_client;
 
     fn source(url: &str) -> DebRepoSource {
         DebRepoSource::new(
@@ -427,6 +426,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap()
     }
@@ -442,6 +442,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap()
     }
@@ -671,6 +672,7 @@ mod tests {
             Some("[bad"),
             false,
             None,
+            test_client(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("Invalid filename_filter"));
@@ -688,6 +690,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("suites must not be empty"));
@@ -1095,6 +1098,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("components must not be empty"));
@@ -1112,6 +1116,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap_err();
         assert!(err.to_string().contains("architectures must not be empty"));
@@ -1130,6 +1135,7 @@ mod tests {
             None,
             true,
             gpg_key,
+            test_client(),
         )
         .unwrap()
     }
@@ -1145,6 +1151,7 @@ mod tests {
             None,
             true,
             gpg_key,
+            test_client(),
         )
         .unwrap()
     }
@@ -1440,6 +1447,7 @@ mod tests {
             None,
             false,
             None,
+            test_client(),
         )
         .unwrap();
 

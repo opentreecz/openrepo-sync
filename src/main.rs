@@ -14,6 +14,9 @@ use std::path::PathBuf;
 use tracing::{debug, error, info, warn};
 use tracing_subscriber::{EnvFilter, fmt};
 
+/// User-Agent header sent with all HTTP requests.
+pub const USER_AGENT: &str = concat!("openrepo-sync/", env!("CARGO_PKG_VERSION"));
+
 #[derive(Parser)]
 #[command(
     name = "openrepo-sync",
@@ -126,7 +129,16 @@ async fn run(cli: &Cli) -> Result<bool> {
     debug!("OpenRepo API URL: {}", global.openrepo.api_url);
     debug!("Download directory: {}", global.download_dir.display());
 
-    let client = repo_client::RepoClient::new(&global.openrepo.api_url, &global.openrepo.api_key)?;
+    let http_client = reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .build()
+        .context("Failed to create HTTP client")?;
+
+    let client = repo_client::RepoClient::new(
+        &global.openrepo.api_url,
+        &global.openrepo.api_key,
+        http_client.clone(),
+    )?;
 
     let username = client
         .whoami()
@@ -162,7 +174,14 @@ async fn run(cli: &Cli) -> Result<bool> {
             "[{}] Starting sync (repo_uid={})",
             project.name, project.repo_uid
         );
-        let result = sync::sync_project(project, &client, &global.download_dir, cli.dry_run).await;
+        let result = sync::sync_project(
+            project,
+            &client,
+            &http_client,
+            &global.download_dir,
+            cli.dry_run,
+        )
+        .await;
         for action in &result.actions {
             match action {
                 models::SyncAction::UpToDate => {

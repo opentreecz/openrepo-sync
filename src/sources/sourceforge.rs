@@ -15,13 +15,15 @@ pub struct SourceforgeSource {
 }
 
 impl SourceforgeSource {
-    pub fn new(project: &str, folder: Option<&str>, filename_filter: Option<&str>) -> Result<Self> {
+    pub fn new(
+        project: &str,
+        folder: Option<&str>,
+        filename_filter: Option<&str>,
+        client: reqwest::Client,
+    ) -> Result<Self> {
         let pattern = filename_filter
             .map(|f| glob::Pattern::new(f).context("Invalid filename_filter glob pattern"))
             .transpose()?;
-        let client = reqwest::Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()?;
         Ok(Self {
             project: project.to_string(),
             folder: folder.map(|s| s.trim_matches('/').to_string()),
@@ -123,6 +125,7 @@ impl SourceforgeSource {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_util::test_client;
 
     fn listing(rows: &str) -> String {
         format!(
@@ -141,19 +144,20 @@ mod tests {
 
     #[test]
     fn new_trims_folder_slashes() {
-        let s = SourceforgeSource::new("proj", Some("/releases/linux/"), None).unwrap();
+        let s =
+            SourceforgeSource::new("proj", Some("/releases/linux/"), None, test_client()).unwrap();
         assert_eq!(s.folder.as_deref(), Some("releases/linux"));
     }
 
     #[test]
     fn new_rejects_invalid_filter() {
-        let err = SourceforgeSource::new("proj", None, Some("[bad")).unwrap_err();
+        let err = SourceforgeSource::new("proj", None, Some("[bad"), test_client()).unwrap_err();
         assert!(err.to_string().contains("Invalid filename_filter"));
     }
 
     #[test]
     fn parses_file_rows_and_builds_absolute_urls() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let html = listing(&file_row(
             "tool-1.2.0.deb",
             "/projects/proj/files/tool-1.2.0.deb/download",
@@ -170,7 +174,7 @@ mod tests {
 
     #[test]
     fn absolute_href_is_kept_as_is() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let html = listing(&file_row(
             "tool-1.0.0.deb",
             "https://mirror.example.com/tool-1.0.0.deb",
@@ -184,7 +188,7 @@ mod tests {
 
     #[test]
     fn directory_rows_without_extension_are_skipped() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let html = listing(&format!(
             "{}{}",
             file_row("subfolder", "/projects/proj/files/subfolder/"),
@@ -200,7 +204,7 @@ mod tests {
 
     #[test]
     fn filename_filter_is_applied() {
-        let source = SourceforgeSource::new("proj", None, Some("*.deb")).unwrap();
+        let source = SourceforgeSource::new("proj", None, Some("*.deb"), test_client()).unwrap();
         let html = listing(&format!(
             "{}{}",
             file_row(
@@ -219,7 +223,7 @@ mod tests {
 
     #[test]
     fn results_sorted_newest_first_and_truncated_to_n() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let html = listing(&format!(
             "{}{}{}",
             file_row("tool-1.0.0.deb", "/a/download"),
@@ -234,7 +238,7 @@ mod tests {
 
     #[test]
     fn unversioned_file_falls_back_to_raw_zero() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let html = listing(&file_row("README.txt", "/r/download"));
         let pkgs = source.parse_files(&html, 10).unwrap();
         assert_eq!(pkgs[0].version, PackageVersion::Raw("0".to_string()));
@@ -242,7 +246,7 @@ mod tests {
 
     #[test]
     fn empty_listing_yields_no_packages() {
-        let source = SourceforgeSource::new("proj", None, None).unwrap();
+        let source = SourceforgeSource::new("proj", None, None, test_client()).unwrap();
         let pkgs = source
             .parse_files("<html><body>no table here</body></html>", 10)
             .unwrap();
@@ -260,7 +264,7 @@ mod tests {
             "/projects/proj/files/tool-1.2.0.deb/download",
         ));
         let server = MockServer::start(vec![MockResponse::json(200, &html)]);
-        let source = SourceforgeSource::new("proj", None, None)
+        let source = SourceforgeSource::new("proj", None, None, test_client())
             .unwrap()
             .with_base_url(&server.url);
 
@@ -275,7 +279,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_includes_folder_in_url() {
         let server = MockServer::start(vec![MockResponse::json(200, &listing(""))]);
-        let source = SourceforgeSource::new("proj", Some("releases/linux"), None)
+        let source = SourceforgeSource::new("proj", Some("releases/linux"), None, test_client())
             .unwrap()
             .with_base_url(&server.url);
 
@@ -289,7 +293,7 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_page_error_fails() {
         let server = MockServer::start(vec![MockResponse::json(404, "gone")]);
-        let source = SourceforgeSource::new("proj", None, None)
+        let source = SourceforgeSource::new("proj", None, None, test_client())
             .unwrap()
             .with_base_url(&server.url);
 

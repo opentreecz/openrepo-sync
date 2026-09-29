@@ -15,10 +15,12 @@ pub struct DirectUrlSource {
 }
 
 impl DirectUrlSource {
-    pub fn new(url: &str, is_latest: bool, sha256: Option<&str>) -> Result<Self> {
-        let client = reqwest::Client::builder()
-            .user_agent("openrepo-sync/0.1")
-            .build()?;
+    pub fn new(
+        url: &str,
+        is_latest: bool,
+        sha256: Option<&str>,
+        client: reqwest::Client,
+    ) -> Result<Self> {
         Ok(Self {
             url: url.to_string(),
             is_latest,
@@ -181,6 +183,7 @@ pub(crate) fn rename_with_version(filename: &str, version: &PackageVersion) -> S
 mod tests {
     use super::*;
     use crate::models::PackageVersion;
+    use crate::test_util::test_client;
 
     // ── url_filename ───────────────────────────────────────────────────────
 
@@ -251,8 +254,13 @@ mod tests {
 
     #[tokio::test]
     async fn static_url_parses_version_from_filename() {
-        let source =
-            DirectUrlSource::new("https://example.com/curl-8.5.0_amd64.deb", false, None).unwrap();
+        let source = DirectUrlSource::new(
+            "https://example.com/curl-8.5.0_amd64.deb",
+            false,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let pkgs = source.fetch_latest(1).await.unwrap();
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].version, PackageVersion::parse("8.5.0"));
@@ -261,8 +269,13 @@ mod tests {
 
     #[tokio::test]
     async fn static_url_falls_back_to_raw_zero_when_no_version() {
-        let source =
-            DirectUrlSource::new("https://example.com/noversion.deb", false, None).unwrap();
+        let source = DirectUrlSource::new(
+            "https://example.com/noversion.deb",
+            false,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let pkgs = source.fetch_latest(1).await.unwrap();
         assert_eq!(pkgs[0].version, PackageVersion::Raw("0".to_string()));
     }
@@ -290,7 +303,13 @@ mod tests {
             )],
         )]);
 
-        let source = DirectUrlSource::new(&format!("{}/download", server.url), true, None).unwrap();
+        let source = DirectUrlSource::new(
+            &format!("{}/download", server.url),
+            true,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let pkgs = source.fetch_latest(1).await.unwrap();
 
         assert_eq!(pkgs.len(), 1);
@@ -319,8 +338,13 @@ mod tests {
 
         // No Content-Disposition: the filename comes from the URL, which has
         // an extension, and gets the detected version appended.
-        let source =
-            DirectUrlSource::new(&format!("{}/mytool.deb", server.url), true, None).unwrap();
+        let source = DirectUrlSource::new(
+            &format!("{}/mytool.deb", server.url),
+            true,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let pkgs = source.fetch_latest(1).await.unwrap();
 
         assert_eq!(pkgs[0].version, PackageVersion::parse("3.1.0"));
@@ -334,7 +358,13 @@ mod tests {
     #[tokio::test]
     async fn latest_url_download_error_fails() {
         let server = MockServer::start(vec![MockResponse::json(500, "boom")]);
-        let source = DirectUrlSource::new(&format!("{}/download", server.url), true, None).unwrap();
+        let source = DirectUrlSource::new(
+            &format!("{}/download", server.url),
+            true,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let err = source.fetch_latest(1).await.unwrap_err();
         assert!(err.to_string().contains("Download request error"));
     }
@@ -344,7 +374,13 @@ mod tests {
         // No Content-Disposition and no usable extension anywhere: the body
         // is staged as .bin, which version extraction rejects.
         let server = MockServer::start(vec![MockResponse::bytes(200, b"junk".to_vec(), &[])]);
-        let source = DirectUrlSource::new(&format!("{}/download", server.url), true, None).unwrap();
+        let source = DirectUrlSource::new(
+            &format!("{}/download", server.url),
+            true,
+            None,
+            test_client(),
+        )
+        .unwrap();
         let err = source.fetch_latest(1).await.unwrap_err();
         assert!(format!("{:#}", err).contains("Version extraction failed"));
     }

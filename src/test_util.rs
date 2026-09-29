@@ -181,3 +181,11 @@ pub fn build_minimal_deb(dir: &std::path::Path, version: &str) -> std::path::Pat
     assert!(status.success(), "dpkg-deb --build failed");
     deb_path
 }
+
+/// Build a `reqwest::Client` for use in tests.
+pub fn test_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(crate::USER_AGENT)
+        .build()
+        .expect("Failed to create test HTTP client")
+}

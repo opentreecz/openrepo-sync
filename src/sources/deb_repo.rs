@@ -310,36 +310,9 @@ impl DebRepoSource {
             return Ok(());
         };
 
-        // Check that the gpg binary is available before attempting verification.
-        if std::process::Command::new("gpg")
-            .arg("--version")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .is_err()
-        {
-            bail!(
-                "gpg binary not found. Install gpg or set verify_gpg: false \
-                 in the project config to skip signature verification"
-            );
-        }
+        crate::gpg::ensure_gpg_available()?;
 
-        // Resolve the key material.
-        let key_data = if key_source.starts_with("http://") || key_source.starts_with("https://") {
-            self.client
-                .get(key_source.as_str())
-                .send()
-                .await
-                .context("Failed to fetch GPG key URL")?
-                .error_for_status()
-                .context("GPG key URL request error")?
-                .bytes()
-                .await
-                .context("Failed to read GPG key body")?
-                .to_vec()
-        } else {
-            key_source.as_bytes().to_vec()
-        };
+        let key_data = crate::gpg::resolve_key(&self.client, key_source).await?;
 
         // Fetch InRelease (clearsigned).
         let inrelease_url = format!("{release_base_url}/InRelease");
@@ -351,62 +324,12 @@ impl DebRepoSource {
             .context("Failed to fetch InRelease")?
             .error_for_status()
             .context("InRelease request error")?
-            .text()
+            .bytes()
             .await
             .context("Failed to read InRelease body")?;
 
-        // Write key and InRelease to temp files, then call `gpg --verify`.
         let tmp = tempfile::tempdir().context("Failed to create temp dir for GPG")?;
-        let keyring = tmp.path().join("repo.gpg");
-        let inrelease_file = tmp.path().join("InRelease");
-
-        std::fs::write(&keyring, &key_data).context("Failed to write GPG keyring")?;
-        std::fs::write(&inrelease_file, inrelease.as_bytes())
-            .context("Failed to write InRelease file")?;
-
-        // Dearmor the key into a temporary keyring for gpg --verify.
-        let dearmored = tmp.path().join("repo-dearmored.gpg");
-        let dearmor_out = std::process::Command::new("gpg")
-            .args([
-                "--homedir",
-                tmp.path().to_str().unwrap(),
-                "--dearmor",
-                "--output",
-                dearmored.to_str().unwrap(),
-                keyring.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to run gpg --dearmor (is gpg installed?)")?;
-
-        if !dearmor_out.status.success() {
-            bail!(
-                "gpg --dearmor failed: {}",
-                String::from_utf8_lossy(&dearmor_out.stderr)
-            );
-        }
-
-        let verify_out = std::process::Command::new("gpg")
-            .args([
-                "--homedir",
-                tmp.path().to_str().unwrap(),
-                "--no-default-keyring",
-                "--keyring",
-                dearmored.to_str().unwrap(),
-                "--verify",
-                inrelease_file.to_str().unwrap(),
-            ])
-            .output()
-            .context("Failed to run gpg --verify")?;
-
-        if verify_out.status.success() {
-            debug!("GPG signature verified for {label}");
-            Ok(())
-        } else {
-            bail!(
-                "GPG signature verification failed for {label}: {}",
-                String::from_utf8_lossy(&verify_out.stderr)
-            )
-        }
+        crate::gpg::verify_clearsigned(tmp.path(), &key_data, &inrelease, label)
     }
 }
 

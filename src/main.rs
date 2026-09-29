@@ -1,5 +1,6 @@
 mod config;
 mod errors;
+mod gpg;
 mod models;
 mod repo_client;
 mod sources;

@@ -126,7 +126,7 @@ with code `PACKAGE_EXISTS`.
 
 ## Phase 2: Architecture Cleanup (Weeks 3–5)
 
-### 2.1 Implement PackageSource Trait (Client — this repo)
+### ✅ 2.1 Implement PackageSource Trait (Client — this repo)
 
 **Goal:** Replace dead trait + manual `match` dispatch with proper trait-object dispatch.
 
@@ -140,7 +140,7 @@ with code `PACKAGE_EXISTS`.
 | `src/sources/sourceforge.rs` | `impl PackageSource for SourceforgeSource` |
 | `src/sync.rs` | Replace `match` block with factory: `fn build_source(config, client) -> Box<dyn PackageSource>` |
 
-### 2.2 Extract Shared GPG Module (Client — this repo)
+### ✅ 2.2 Extract Shared GPG Module (Client — this repo)
 
 **New file:** `src/gpg.rs`
 
@@ -150,7 +150,7 @@ with code `PACKAGE_EXISTS`.
 | `fetch_gpg_key(source, client)` | Both sources | Fetch key from URL or inline |
 | `import_gpg_key(data, homedir)` | Both sources | Dearmor + import into temp keyring |
 
-### 2.3 Share reqwest::Client (Client — this repo)
+### ✅ 2.3 Share reqwest::Client (Client — this repo)
 
 **Goal:** Single HTTP client with shared connection pool.
 
@@ -171,19 +171,19 @@ All server adapter issues resolved: ABC conversion, constructor signatures,
 
 | Duplication | Strategy | Status |
 |-------------|----------|--------|
-| GPG verification (~200 lines) | Extract to `src/gpg.rs` (2.2) | Pending |
-| `reqwest::Client` (6 places) | Pass shared client (2.3) | Pending |
+| GPG verification (~200 lines) | Extract to `src/gpg.rs` (2.2) | ✅ Done |
+| `reqwest::Client` (6 places) | Pass shared client (2.3) | ✅ Done |
 | `_symlink_packages_to_dir` vs `_copy_packages` | Merge into base class | ✅ Done |
 | Architecture resolution in deb adapter | Extract and reuse `_get_architectures()` | Trivial |
 | Test setUp boilerplate (server) | Extract shared fixtures module | Medium |
 | API URL patterns (Rust + Python) | Generate from OpenAPI spec long-term | Medium |
-| User-Agent string | Use `env!("CARGO_PKG_VERSION")` via shared client | Pending |
+| User-Agent string | Use `env!("CARGO_PKG_VERSION")` via shared client | ✅ Done |
 
 ---
 
 ## Phase 3: Test Infrastructure (Weeks 5–7)
 
-### 3.1 Typed API Client Structs (Client — this repo)
+### ✅ 3.1 Typed API Client Structs (Client — this repo)
 
 Replace `serde_json::Value` parsing with strongly-typed structs:
 `PaginatedResponse<T>`, `ApiPackage`, `ApiUploadStatus`.
@@ -228,11 +228,11 @@ Pull OpenRepo Docker image, start stack, run real sync operations.
 
 ## Phase 4: Observability & Hardening (Weeks 7–9)
 
-### 4.1 Health Check Endpoint (Server)
+### ✅ 4.1 Health Check Endpoint (Server)
 
 `GET /api/health/` — no auth, returns DB/worker/version status.
 
-### 4.2 Structured Logging (Server)
+### ✅ 4.2 Structured Logging (Server)
 
 Add `structlog` with JSON output, correlation IDs, request tracing.
 
@@ -241,11 +241,11 @@ Add `structlog` with JSON output, correlation IDs, request tracing.
 Add `django-prometheus` with custom metrics: package count, upload duration,
 build duration, retention deletions.
 
-### 4.4 PGP Key Encryption at Rest (Server)
+### ✅ 4.4 PGP Key Encryption at Rest (Server)
 
 Fernet encryption for `private_key_pem` and `passphrase` fields.
 
-### 4.5 Rate Limiting (Server)
+### ✅ 4.5 Rate Limiting (Server)
 
 DRF throttling: 100 req/min user, 20 req/min upload.
 
@@ -253,11 +253,11 @@ DRF throttling: 100 req/min user, 20 req/min upload.
 
 Client sends SHA-256 with upload; server verifies on receipt.
 
-### 4.7 Retention Logic Fix (Server)
+### ✅ 4.7 Retention Logic Fix (Server)
 
 Wrap in `transaction.atomic()`. Fix N+1 query. Add DB constraints.
 
-### 4.8 Pagination Fix (Server)
+### ✅ 4.8 Pagination Fix (Server)
 
 Change `PAGE_SIZE` from 2000 to 500 to match `max_page_size`.
 
@@ -280,15 +280,15 @@ Phase 1 (Weeks 1-3): Foundation ✅ COMPLETE
        └── 1.5f Upload status authz ✅
 
 Phase 2 (Weeks 3-5): Architecture
-  ├── 2.1 PackageSource trait (client)
-  ├── 2.2 GPG module extraction (client)
-  ├── 2.3 Shared reqwest::Client (client)
+  ├── ✅ 2.1 PackageSource trait (client)
+  ├── ✅ 2.2 GPG module extraction (client)
+  ├── ✅ 2.3 Shared reqwest::Client (client)
   ├── 2.4 Fix server adapter abstractions (server)
   ├── 2.5 Adapter registry (server) ✅
   └── 2.6 Remaining deduplication (both) — server ✅, client pending
 
 Phase 3 (Weeks 5-7): Testing
-  ├── 3.1 Typed API client structs (client) — depends on 1.1
+  ├── ✅ 3.1 Typed API client structs (client) — depends on 1.1
   ├── 3.2 E2E tests in server repo — depends on 1.3
   ├── 3.3 E2E tests in client repo — depends on 1.4, 3.1
   ├── 3.4 Fill server test gaps
@@ -296,14 +296,14 @@ Phase 3 (Weeks 5-7): Testing
   └── 3.6 OpenAPI schema validation in CI — depends on 1.1
 
 Phase 4 (Weeks 7-9): Observability & Hardening
-  ├── 4.1 Health check endpoint (server)
-  ├── 4.2 Structured logging (server)
+  ├── ✅ 4.1 Health check endpoint (server)
+  ├── ✅ 4.2 Structured logging (server)
   ├── 4.3 Prometheus metrics (server)
-  ├── 4.4 PGP key encryption (server)
-  ├── 4.5 Rate limiting (server)
+  ├── ✅ 4.4 PGP key encryption (server)
+  ├── ✅ 4.5 Rate limiting (server)
   ├── 4.6 Hash continuity (both)
-  ├── 4.7 Retention logic fix (server)
-  └── 4.8 Pagination fix (server)
+  ├── ✅ 4.7 Retention logic fix (server)
+  └── ✅ 4.8 Pagination fix (server)
 ```
 
 ## File Change Estimate

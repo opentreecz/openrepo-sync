@@ -18,15 +18,17 @@ client to the OpenRepo server (Django/Vue.js).
 
 ```
 src/
-  main.rs          — CLI entry point, scheduler loop, logging
+  main.rs          — CLI entry point, scheduler loop, logging, USER_AGENT constant
   config.rs        — YAML config deserialization, ${ENV_VAR} expansion
   models.rs        — PackageVersion, RemotePackage, RepoPackage, SyncResult
+  errors.rs        — Typed error types (UploadError, ApiError)
   version.rs       — Version extraction from filenames, dpkg-deb, rpm
+  gpg.rs           — Shared GPG verification (clearsigned + detached signatures)
   repo_client.rs   — OpenRepo REST API client (whoami, list, upload, delete)
   sync.rs          — Per-project sync orchestration (fetch -> compare -> upload -> prune)
-  test_util.rs     — Custom MockServer for tests
+  test_util.rs     — Custom MockServer + test_client() helper for tests
   sources/
-    mod.rs         — PackageSource trait (currently UNUSED — dead code)
+    mod.rs         — PackageSource trait + AnySource enum dispatch
     github.rs      — GitHub Releases API source
     deb_repo.rs    — Debian APT repository source
     rpm_repo.rs    — RPM (YUM/DNF) repository source
@@ -57,20 +59,25 @@ Auth: `Authorization: Token <api_key>` header on all requests.
    `UploadError::PackageExists` variant. Server returns HTTP 409 + `PACKAGE_EXISTS`
    error code. Backward-compatible fallback for older servers retained.
 
-2. **Dead PackageSource trait** — `sources/mod.rs` defines the trait but no source
-   implements it. Dispatch is a manual `match` in `sync.rs:209-287`.
+2. **~~Dead PackageSource trait~~** — ✅ RESOLVED: `AnySource` enum dispatch in
+   `sources/mod.rs` with `build_source()` factory in `sync.rs`. The `PackageSource`
+   trait is retained as interface documentation.
 
-3. **GPG code duplication** — ~200 lines duplicated between `deb_repo.rs:308-412`
-   and `rpm_repo.rs:396-516`. Should be extracted to `src/gpg.rs`.
+3. **~~GPG code duplication~~** — ✅ RESOLVED: Extracted shared GPG module to
+   `src/gpg.rs` with `verify_clearsigned()` and `verify_detached()` functions.
+   Both `deb_repo.rs` and `rpm_repo.rs` delegate to the shared module.
 
-4. **reqwest::Client constructed 6 times** — Should be shared via constructor injection.
+4. **~~reqwest::Client constructed 7 times~~** — ✅ RESOLVED: Single shared
+   `reqwest::Client` constructed in `main.rs:run()` and passed through to all
+   source constructors and `download_package()`.
 
-5. **Manual JSON parsing** — `repo_client.rs` uses `serde_json::Value` with `.get()`
-   chains instead of typed deserialization. Now that the server exposes an OpenAPI
-   spec at `/api/schema/`, typed structs can be derived from it (Phase 3.1).
+5. **~~Manual JSON parsing~~** — ✅ RESOLVED: `repo_client.rs` now uses typed
+   `PaginatedResponse<ApiPackage>` structs with `serde::Deserialize` instead of
+   `serde_json::Value` with `.get()` chains.
 
-6. **Hardcoded User-Agent** — `"openrepo-sync/0.1"` at `repo_client.rs:63` and
-   `sync.rs:315`. Should use `env!("CARGO_PKG_VERSION")`.
+6. **~~Hardcoded User-Agent~~** — ✅ RESOLVED: `USER_AGENT` constant in `main.rs`
+   uses `concat!("openrepo-sync/", env!("CARGO_PKG_VERSION"))`. Set once on the
+   shared `reqwest::Client`.
 
 ## Testing
 

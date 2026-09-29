@@ -66,7 +66,8 @@ openrepo:
 Get the key from the OpenRepo web UI (user profile page), then:
 
 ```sh
-echo "OPENREPO_API_KEY=your_token_here" > .env
+cp .env.example .env
+$EDITOR .env        # paste your OPENREPO_API_KEY
 chmod 600 .env
 ```
 

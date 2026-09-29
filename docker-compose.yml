@@ -1,3 +1,26 @@
+# =============================================================================
+# openrepo-sync — Docker Compose Configuration
+# =============================================================================
+#
+# Quick start:
+#   1. cp .env.example .env && $EDITOR .env       # set OPENREPO_API_KEY
+#   2. cp config.yaml.example config.yaml          # set api_url
+#   3. cp projects/deb-repo-example.yaml.example projects/myapp.yaml
+#   4. docker compose up -d                        # start scheduled sync
+#
+# The container runs in scheduled mode by default (--schedule), syncing
+# all project files at the interval configured in config.yaml.
+#
+# One-shot sync:
+#   docker compose run --rm openrepo-sync --config /config.yaml --projects /projects
+#
+# Dry run:
+#   docker compose run --rm openrepo-sync --config /config.yaml --projects /projects --dry-run
+#
+# Sync a single project:
+#   docker compose run --rm openrepo-sync --config /config.yaml --projects /projects --project myapp
+# =============================================================================
+
 services:
   openrepo-sync:
     image: ghcr.io/opentreecz/openrepo-sync:latest
@@ -5,9 +28,13 @@ services:
       context: .
       dockerfile: Dockerfile.build
     volumes:
+      # Global configuration (API URL, API key, schedule settings)
       - ./config.yaml:/config.yaml:ro,z
+      # Per-project YAML files (one per upstream source)
       - ./projects:/projects:ro,z
     environment:
+      # API key for the OpenRepo server (passed to config.yaml via ${OPENREPO_API_KEY})
       - OPENREPO_API_KEY=${OPENREPO_API_KEY}
+    # Run in scheduled mode — syncs at the interval defined in config.yaml
     command: ["--schedule", "--config", "/config.yaml", "--projects", "/projects"]
     restart: unless-stopped

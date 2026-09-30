@@ -19,18 +19,13 @@ name: epel-nginx           # identifier used in log output and --project NAME
 repo_uid: rpm-stable       # target repository UID in OpenRepo
 keep_versions: 3           # keep the 3 newest versions; older ones are pruned
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
-# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
-#                           # set to false to skip verification for this project
 
 source:
   type: rpm_repo
   url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
 
-  # Architecture(s) to include. Accepts a single string or a list.
-  #   architectures: x86_64
-  #   architectures: [x86_64, noarch]
-  # Default: [x86_64, noarch]
-  architectures: [x86_64, noarch]
+  # Architectures are inherited from global config.yaml (`arch_filter`).
+  # With global `arch_filter: amd64`, RPM repositories include `x86_64` and `noarch`.
 
   # Exact RPM package name(s) to sync (matches <name> in primary metadata).
   # Accepts a single string or a list. Optional — omit to sync all packages.

@@ -35,11 +35,6 @@ where
     })
 }
 
-/// Returns the default arch priority list: amd64 first, then arm64.
-fn default_arch_filter() -> Vec<String> {
-    vec!["amd64".to_string(), "arm64".to_string()]
-}
-
 fn default_deb_suites() -> Vec<String> {
     vec!["trixie".to_string()]
 }
@@ -65,6 +60,12 @@ pub struct GlobalConfig {
     pub openrepo: OpenRepoConfig,
     #[serde(default = "default_download_dir")]
     pub download_dir: PathBuf,
+    /// Global architecture preference used by every source type.
+    #[serde(
+        default = "crate::arch::default_arch_filter",
+        deserialize_with = "deserialize_string_or_list"
+    )]
+    pub arch_filter: Vec<String>,
     #[serde(default)]
     pub schedule: ScheduleConfig,
 }
@@ -176,15 +177,8 @@ pub enum SourceConfig {
         asset_filter: Option<String>,
         #[serde(default)]
         prerelease: bool,
-        /// Ordered architecture preference list. The first entry that matches
-        /// an asset filename is selected. When a release has assets for multiple
-        /// architectures, this prevents accidentally downloading the wrong one.
-        /// Default: ["amd64", "arm64"]. Set to [] to disable arch filtering.
-        /// Accepts a single string or a list: `arch_filter: amd64`
-        #[serde(
-            default = "default_arch_filter",
-            deserialize_with = "deserialize_string_or_list"
-        )]
+        /// Deprecated. Architecture filtering is configured globally.
+        #[serde(default, deserialize_with = "deserialize_string_or_list")]
         arch_filter: Vec<String>,
         /// Exact package name(s) to sync. The package name is extracted from
         /// the asset filename (e.g. `rpi-imager-cli` from
@@ -339,6 +333,7 @@ openrepo:
         assert_eq!(cfg.openrepo.api_key, "tok123");
         // download_dir defaults to system temp + "openrepo-sync"
         assert!(cfg.download_dir.ends_with("openrepo-sync"));
+        assert_eq!(cfg.arch_filter, vec!["amd64"]);
         assert!(cfg.schedule.enabled);
         assert_eq!(cfg.schedule.interval, "24h");
         assert!(cfg.schedule.run_on_start);
@@ -357,6 +352,18 @@ download_dir: "/var/cache/openrepo"
             cfg.download_dir,
             std::path::PathBuf::from("/var/cache/openrepo")
         );
+    }
+
+    #[test]
+    fn global_config_explicit_arch_filter() {
+        let yaml = r#"
+openrepo:
+  api_url: "https://repo.example.com"
+  api_key: "tok"
+arch_filter: [arm64, amd64]
+"#;
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert_eq!(cfg.arch_filter, vec!["arm64", "amd64"]);
     }
 
     #[test]
@@ -523,7 +530,7 @@ source:
         {
             assert!(asset_filter.is_none());
             assert!(!prerelease);
-            assert_eq!(arch_filter, vec!["amd64", "arm64"]);
+            assert!(arch_filter.is_empty());
         } else {
             panic!("wrong variant");
         }

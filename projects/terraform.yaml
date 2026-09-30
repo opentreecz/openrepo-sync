@@ -9,7 +9,6 @@ source:
   url: https://apt.releases.hashicorp.com
   suites: trixie
   components: main
-  architectures: amd64
   package_filter: terraform
   verify_gpg: true
   gpg_key: https://apt.releases.hashicorp.com/gpg

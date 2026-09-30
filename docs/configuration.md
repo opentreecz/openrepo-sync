@@ -30,6 +30,7 @@ openrepo:
   api_url: "https://openrepo.example.com"
   api_key: "${OPENREPO_API_KEY}"   # ${VAR} is expanded from the environment
 download_dir: "/tmp/openrepo-sync" # optional; defaults to the system temp dir
+arch_filter: amd64                  # global architecture policy; default: amd64
 schedule:
   enabled: true
   interval: "24h"
@@ -43,6 +44,19 @@ schedule:
 | `openrepo.api_url` | Yes | — | Base URL of your OpenRepo instance |
 | `openrepo.api_key` | Yes | — | API token. Supports `${ENV_VAR}` expansion |
 | `download_dir` | No | system temp dir | Directory for temporary package downloads |
+| `arch_filter` | No | `amd64` | Global architecture preference used by every project and source type |
+
+### Architecture Filter
+
+`arch_filter` is configured globally, not per project. It accepts a single string or an ordered list:
+
+```yaml
+arch_filter: amd64
+# arch_filter: [amd64, arm64]
+# arch_filter: []  # disable filename/fixed-URL arch filtering; APT/RPM use defaults
+```
+
+Common values are `amd64`, `arm64`, `armhf`, and `i386`. `amd64` matches filenames containing `amd64`, `x86_64`, `x86-64`, or `x64`. `i386` matches 32-bit x86 names such as `i386`, `i686`, `ia32`, `x86`, and `386`, but not `x86_64`. `x32` is intentionally not an `i386` alias.
 
 ### Schedule
 
@@ -104,7 +118,7 @@ source:
   asset_filter: "*.deb"              # optional; omit to keep all assets
   package_filter: [rpi-imager, rpi-imager-cli]  # optional; string or list
   prerelease: false                   # default: false
-  arch_filter: [amd64, arm64]         # default: [amd64, arm64]
+  # architecture filtering is inherited from global arch_filter
 ```
 
 ### `deb_repo`
@@ -115,7 +129,7 @@ source:
   layout: debian                            # default: debian; use flat for OBS-style repos
   suites: trixie                              # default: [trixie]
   components: nginx                           # default: [main]
-  architectures: [amd64, arm64]               # default: [amd64]
+  # architectures are inherited from global arch_filter
   package_filter: nginx                       # optional; string or list
   # package_filter: [nginx, nginx-module-njs]
   verify_gpg: true                            # default: true; set to false to skip GPG verification
@@ -129,7 +143,6 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  architectures: amd64
   package_filter: [libdatovka0, libdatovka8, datovka]
 ```
 
@@ -140,7 +153,7 @@ source:
 source:
   type: rpm_repo
   url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
-  architectures: [x86_64, noarch]         # default: [x86_64, noarch]
+  # architectures are inherited from global arch_filter; noarch is always included
   package_filter: nginx                   # optional; exact name match
   verify_gpg: true                        # default: true
   gpg_key: https://www.redhat.com/security/team/key/

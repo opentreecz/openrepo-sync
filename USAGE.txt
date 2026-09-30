@@ -167,29 +167,30 @@ Scrapes the SourceForge file listing page to discover release files.
     project: my-sf-project        # SourceForge project identifier
     folder: "releases/linux"      # optional subfolder; omit for root listing
     filename_filter: "*.deb"      # optional glob filter on filenames
+    # architecture filtering is inherited from global arch_filter
 
 Files are sorted by detected version number, newest first.
 
 
 deb_repo
 ~~~~~~~~
-Mirrors packages from an external Debian (APT) repository.  Fetches the
+Mirrors packages from an external Debian (APT) repository. Fetches the
 Packages index (Packages.gz, falling back to plain Packages) for each
-suite/component/architecture combination, filters by package name and/or
+suite/component/global-architecture combination, filters by package name and/or
 filename glob, and uploads the newest versions.
 
   source:
     type: deb_repo
     url: https://nginx.org/packages/debian   # repository base URL
-    suites: bookworm              # string or list; default: bookworm
+    suites: trixie                # string or list; default: trixie
     components: nginx             # string or list; default: main
-    architectures: [amd64, arm64] # string or list; default: amd64
+    # architectures are inherited from global arch_filter
     package_filter: nginx         # exact Package: name to sync (optional)
     # filename_filter: "nginx_*.deb"  # optional glob on the index filename
     verify_gpg: true              # default: true
     gpg_key: https://nginx.org/keys/nginx_signing.key
 
-Every suites x components x architectures combination is fetched and merged;
+Every suites x components x global-architectures combination is fetched and merged;
 duplicate filenames (e.g. arch:all packages) are collapsed, and the newest
 keep_versions entries are kept per (package name, architecture) group.
 

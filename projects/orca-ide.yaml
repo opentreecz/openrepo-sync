@@ -9,5 +9,4 @@ source:
   owner: stablyai
   repo: orca
   asset_filter: "*.deb"
-  arch_filter: amd64
   prerelease: false

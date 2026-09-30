@@ -9,7 +9,6 @@ source:
   url: https://downloads.claude.ai/claude-desktop/apt/stable
   suites: stable
   components: main
-  architectures: amd64
   package_filter: claude-desktop
   verify_gpg: true
   gpg_key: https://downloads.claude.ai/claude-desktop/key.asc

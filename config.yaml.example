@@ -27,13 +27,25 @@ openrepo:
 # even when running in Docker.
 # download_dir: "/tmp/openrepo-sync"
 
-# Verify that the version inside uploaded package files (.deb/.rpm) matches
-# the version reported by the upstream source. When a mismatch is detected,
-# the package metadata version is used as authoritative (it matches what the
-# OpenRepo server will store).
-# Requires dpkg-deb (for .deb) or rpm (for .rpm) to be installed.
-# Can be overridden per-project in the project YAML file. Default: true.
-verify_version: true
+# Global architecture policy used by every project and source type.
+# Default: amd64.
+#
+# Common values:
+#   amd64  = 64-bit x86 Linux packages; matches amd64, x86_64, x86-64, x64
+#   arm64  = 64-bit ARM Linux packages; matches arm64, aarch64, arm-64
+#   armhf  = 32-bit ARMv7 Linux packages; matches armhf, armv7, armv7l, armv7hl, arm7
+#   i386   = 32-bit x86 Linux packages; matches i386, i486, i586, i686, ia32, x86, 386
+#
+# Notes:
+#   x86 is matched only as a 32-bit architecture token, never inside x86_64/x86-64.
+#   x32 is not treated as i386; on Linux it usually means the x32 ABI.
+#   Debian "all" packages and RPM "noarch" packages are always accepted.
+#
+# Use a list to prefer one architecture and fall back to another when upstream
+# releases do not publish the preferred architecture.
+arch_filter: amd64
+# arch_filter: [amd64, arm64]
+# arch_filter: []   # disable filename/fixed-URL arch filtering; APT/RPM use their defaults
 
 # Optional scheduler settings used when the container is started with
 # `openrepo-sync --schedule` or via `docker compose up -d`.

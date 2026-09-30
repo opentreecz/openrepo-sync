@@ -9,6 +9,5 @@ source:
   url: https://deb.debian.org/debian
   suites: trixie
   components: main
-  architectures: amd64
   package_filter: lexmark-aey-ppd-files
   verify_gpg: false

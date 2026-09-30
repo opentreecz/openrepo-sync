@@ -53,9 +53,9 @@ available at [/coverage-report/tarpaulin-report.html](../coverage-report/tarpaul
 | Module | What is tested |
 |---|---|
 | `models` | `PackageVersion::parse` — semver, `v`-prefix, pre-release, raw fallback; ordering; Display |
-| `config` | All source type deserialisations, GitHub arch_filter and package_filter defaults/overrides, env-var expansion, load/load_all filesystem paths |
+| `config` | Global arch_filter, source type deserialisations, package_filter defaults/overrides, env-var expansion, load/load_all filesystem paths |
 | `repo_client` | All HTTP methods via mock server: list/upload/delete/whoami, pagination, auth header, error handling |
-| `sources::github` | Asset collection, package_filter, arch_filter priority (amd64/x86_64/arm64/aarch64 aliases), pagination, draft/prerelease skipping, mock API |
+| `sources::github` | Asset collection, package_filter, global arch_filter priority, pagination, draft/prerelease skipping, mock API |
 | `sources::sourceforge` | HTML scraping, filename/package filter, folder URL, mock HTTP server |
 | `sources::direct_url` | Static URL version parsing, LATEST URL download+version extraction, filename utilities |
 | `sync` | Full sync cycle via mock server: upload, skip, conflict, scoped prune, dry-run, error propagation |

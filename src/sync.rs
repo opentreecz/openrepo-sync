@@ -21,6 +21,7 @@ pub async fn sync_project(
     client: &RepoClient,
     http_client: &reqwest::Client,
     download_dir: &Path,
+    arch_filter: &[String],
     dry_run: bool,
 ) -> SyncResult {
     let mut result = SyncResult {
@@ -28,7 +29,16 @@ pub async fn sync_project(
         actions: Vec::new(),
     };
 
-    match sync_project_inner(project, client, http_client, download_dir, dry_run).await {
+    match sync_project_inner(
+        project,
+        client,
+        http_client,
+        download_dir,
+        arch_filter,
+        dry_run,
+    )
+    .await
+    {
         Ok(actions) => result.actions = actions,
         Err(e) => {
             warn!("[{}] Error: {:#}", project.name, e);
@@ -43,12 +53,13 @@ async fn sync_project_inner(
     client: &RepoClient,
     http_client: &reqwest::Client,
     download_dir: &Path,
+    arch_filter: &[String],
     dry_run: bool,
 ) -> Result<Vec<SyncAction>> {
     let mut actions = Vec::new();
 
     info!("[{}] Fetching upstream packages...", project.name);
-    let remote_packages = fetch_upstream(project, http_client).await?;
+    let remote_packages = fetch_upstream(project, http_client, arch_filter).await?;
     debug!(
         "[{}] Found {} upstream packages",
         project.name,
@@ -214,21 +225,25 @@ fn prune_candidates(
 }
 
 /// Build an [`AnySource`] from the project's source configuration.
-fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<AnySource> {
+fn build_source(
+    config: &SourceConfig,
+    http_client: &reqwest::Client,
+    arch_filter: &[String],
+) -> Result<AnySource> {
     match config {
         SourceConfig::Github {
             owner,
             repo,
             asset_filter,
             prerelease,
-            arch_filter,
+            arch_filter: _,
             package_filter,
         } => Ok(AnySource::Github(GithubSource::new(
             owner,
             repo,
             asset_filter.as_deref(),
             *prerelease,
-            arch_filter.clone(),
+            arch_filter.to_vec(),
             package_filter.clone(),
             http_client.clone(),
         )?)),
@@ -236,11 +251,18 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             url,
             false,
             sha256.as_deref(),
+            arch_filter.to_vec(),
             http_client.clone(),
         )?)),
-        SourceConfig::DirectUrlLatest { url, sha256 } => Ok(AnySource::DirectUrl(
-            DirectUrlSource::new(url, true, sha256.as_deref(), http_client.clone())?,
-        )),
+        SourceConfig::DirectUrlLatest { url, sha256 } => {
+            Ok(AnySource::DirectUrl(DirectUrlSource::new(
+                url,
+                true,
+                sha256.as_deref(),
+                arch_filter.to_vec(),
+                http_client.clone(),
+            )?))
+        }
         SourceConfig::Sourceforge {
             project: sf_project,
             folder,
@@ -251,6 +273,7 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             folder.as_deref(),
             filename_filter.as_deref(),
             package_filter.clone(),
+            arch_filter.to_vec(),
             http_client.clone(),
         )?)),
         SourceConfig::DebRepo {
@@ -268,7 +291,11 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             layout.clone(),
             suites.clone(),
             components.clone(),
-            architectures.clone(),
+            if arch_filter.is_empty() {
+                architectures.clone()
+            } else {
+                crate::arch::deb_architectures(arch_filter)
+            },
             package_filter.clone(),
             filename_filter.as_deref(),
             *verify_gpg,
@@ -288,7 +315,11 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             filename_filter.as_deref(),
             *verify_gpg,
             gpg_key.as_deref(),
-            architectures.clone(),
+            if arch_filter.is_empty() {
+                architectures.clone()
+            } else {
+                crate::arch::rpm_architectures(arch_filter)
+            },
             http_client.clone(),
         )?)),
     }
@@ -297,8 +328,9 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
 async fn fetch_upstream(
     project: &ProjectConfig,
     http_client: &reqwest::Client,
+    arch_filter: &[String],
 ) -> Result<Vec<RemotePackage>> {
-    let source = build_source(&project.source, http_client)?;
+    let source = build_source(&project.source, http_client, arch_filter)?;
     let n = match &project.source {
         SourceConfig::DirectUrl { .. } | SourceConfig::DirectUrlLatest { .. } => 1,
         _ => project.keep_versions,
@@ -393,6 +425,10 @@ mod tests {
         }
     }
 
+    fn arch_filter() -> Vec<String> {
+        vec!["amd64".to_string()]
+    }
+
     fn empty_list() -> MockResponse {
         MockResponse::json(200, r#"{"results":[],"next":null}"#)
     }
@@ -433,7 +469,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert_eq!(result.project_name, "testproj");
         assert_eq!(result.actions.len(), 1);
@@ -450,7 +494,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
@@ -464,7 +516,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
     }
@@ -478,7 +538,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/other.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert!(matches!(&result.actions[0], SyncAction::Uploaded { .. }));
     }
@@ -495,7 +563,15 @@ mod tests {
 
         // Remote 3.0.0 already present → UpToDate, then prune down to 1.
         let p = project("https://example.com/tool-3.0.0.deb", 1, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 2);
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
@@ -592,7 +668,15 @@ mod tests {
             2,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            false,
+        )
+        .await;
 
         assert!(matches!(result.actions[0], SyncAction::UpToDate));
         assert!(matches!(
@@ -700,7 +784,15 @@ mod tests {
             5,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            false,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -739,7 +831,15 @@ mod tests {
             5,
             OnConflict::Skip,
         );
-        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            false,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -771,7 +871,15 @@ mod tests {
             5,
             OnConflict::Skip,
         );
-        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            false,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 1);
         assert!(matches!(
@@ -802,7 +910,15 @@ mod tests {
             5,
             OnConflict::Error,
         );
-        let result = sync_project(&p, &client, &test_client(), dir.path(), false).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            false,
+        )
+        .await;
 
         assert_eq!(result.actions.len(), 1);
         match &result.actions[0] {
@@ -820,7 +936,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert!(matches!(&result.actions[0], SyncAction::Error(_)));
     }
@@ -834,7 +958,15 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let p = project("https://example.com/tool-1.0.0.deb", 5, OnConflict::Error);
-        let result = sync_project(&p, &client, &test_client(), dir.path(), true).await;
+        let result = sync_project(
+            &p,
+            &client,
+            &test_client(),
+            dir.path(),
+            &arch_filter(),
+            true,
+        )
+        .await;
 
         assert!(matches!(&result.actions[0], SyncAction::Error(_)));
         if let SyncAction::Error(msg) = &result.actions[0] {

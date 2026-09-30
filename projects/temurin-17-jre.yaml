@@ -9,7 +9,6 @@ source:
   url: https://packages.adoptium.net/artifactory/deb
   suites: trixie
   components: main
-  architectures: amd64
   package_filter: temurin-17-jre
   verify_gpg: true
   gpg_key: https://packages.adoptium.net/artifactory/api/gpg/key/public

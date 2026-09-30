@@ -9,7 +9,6 @@ source:
   url: https://downloads.k8slens.dev/apt/debian
   suites: stable
   components: main
-  architectures: amd64
   package_filter: lens
   verify_gpg: true
   gpg_key: https://downloads.k8slens.dev/keys/gpg

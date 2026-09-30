@@ -9,7 +9,6 @@ source:
   url: https://packages.microsoft.com/repos/edge
   suites: stable
   components: main
-  architectures: amd64
   package_filter: microsoft-edge-stable
   verify_gpg: true
   gpg_key: https://packages.microsoft.com/keys/microsoft.asc

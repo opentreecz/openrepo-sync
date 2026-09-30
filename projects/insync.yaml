@@ -9,6 +9,5 @@ source:
   url: https://apt.insync.io/debian
   suites: trixie
   components: [non-free, contrib]
-  architectures: amd64
   package_filter: insync
   verify_gpg: false

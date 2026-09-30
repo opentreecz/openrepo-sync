@@ -9,7 +9,6 @@ source:
   url: https://packagecloud.io/slacktechnologies/slack/debian
   suites: jessie
   components: main
-  architectures: amd64
   package_filter: slack-desktop
   verify_gpg: true
   gpg_key: https://packagecloud.io/slacktechnologies/slack/gpgkey

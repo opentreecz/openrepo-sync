@@ -9,7 +9,6 @@ source:
   url: https://repository.spotify.com
   suites: stable
   components: non-free
-  architectures: amd64
   package_filter: spotify-client
   verify_gpg: true
   gpg_key: https://download.spotify.com/debian/pubkey_5384CE82BA52C83A.asc

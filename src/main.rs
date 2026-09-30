@@ -1,3 +1,4 @@
+mod arch;
 mod config;
 mod errors;
 mod gpg;
@@ -180,6 +181,7 @@ async fn run(cli: &Cli) -> Result<bool> {
             &client,
             &http_client,
             &global.download_dir,
+            &global.arch_filter,
             cli.dry_run,
         )
         .await;

@@ -8,6 +8,5 @@ source:
   type: github
   owner: balena-io
   repo: etcher
-  asset_filter: "*_amd64.deb"
-  arch_filter: amd64
+  asset_filter: "*.deb"
   prerelease: false

@@ -12,14 +12,15 @@ name: sfpkg
 repo_uid: debian-sf
 keep_versions: 2
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
-# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
-#                           # set to false to skip verification for this project
 
 source:
   type: sourceforge
   project: my-sf-project      # SourceForge project identifier (from the URL)
   folder: "releases/linux"    # optional; default: root listing (omit for project root)
   filename_filter: "*.deb"    # optional; default: all files (omit to keep all)
+
+  # Architecture filtering is inherited from global config.yaml (`arch_filter`).
+  # Example: global `arch_filter: amd64` matches amd64, x86_64, x86-64, and x64.
 
   # package_filter — exact package name(s) to sync (optional).
   #

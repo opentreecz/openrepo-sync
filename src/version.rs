@@ -42,6 +42,21 @@ pub fn extract_version_dpkg(path: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+pub fn extract_architecture_dpkg(path: &Path) -> Result<String> {
+    let output = std::process::Command::new("dpkg-deb")
+        .args(["--field", &path.to_string_lossy(), "Architecture"])
+        .output()
+        .context("Failed to run dpkg-deb — is dpkg installed?")?;
+    if !output.status.success() {
+        bail!(
+            "dpkg-deb failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 pub fn extract_version_rpm(path: &Path) -> Result<String> {
     let output = std::process::Command::new("rpm")
         .args([
@@ -50,6 +65,21 @@ pub fn extract_version_rpm(path: &Path) -> Result<String> {
             "%{VERSION}-%{RELEASE}",
             &path.to_string_lossy(),
         ])
+        .output()
+        .context("Failed to run rpm — is rpm installed?")?;
+    if !output.status.success() {
+        bail!(
+            "rpm query failed for {}: {}",
+            path.display(),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+pub fn extract_architecture_rpm(path: &Path) -> Result<String> {
+    let output = std::process::Command::new("rpm")
+        .args(["-qp", "--queryformat", "%{ARCH}", &path.to_string_lossy()])
         .output()
         .context("Failed to run rpm — is rpm installed?")?;
     if !output.status.success() {
@@ -134,6 +164,21 @@ pub fn extract_version_from_package(path: &Path) -> Result<PackageVersion> {
         _ => bail!("Unsupported package type for version extraction: .{}", ext),
     };
     Ok(PackageVersion::parse(&version_str))
+}
+
+pub fn extract_architecture_from_package(path: &Path) -> Result<String> {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    match ext {
+        "deb" => extract_architecture_dpkg(path),
+        "rpm" => extract_architecture_rpm(path),
+        _ => bail!(
+            "Unsupported package type for architecture extraction: .{}",
+            ext
+        ),
+    }
 }
 
 #[cfg(test)]

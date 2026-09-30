@@ -9,7 +9,6 @@ source:
   url: https://dl.google.com/linux/earth/deb
   suites: stable
   components: main
-  architectures: amd64
   package_filter: google-earth-ec-stable
   verify_gpg: true
   gpg_key: https://dl.google.com/linux/linux_signing_key.pub

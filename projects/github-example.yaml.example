@@ -13,8 +13,6 @@ name: curl                 # identifier used in log output and --project NAME
 repo_uid: debian-stable    # target repository UID in OpenRepo
 keep_versions: 3           # keep the 3 newest versions; older ones are pruned
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
-# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
-#                           # set to false to skip verification for this project
 
 source:
   type: github
@@ -36,7 +34,7 @@ source:
   # package_filter: curl
   # package_filter: [rpi-imager, rpi-imager-cli]
 
-  # arch_filter — ordered architecture preference list (optional).
+  # Architecture filtering is configured globally in config.yaml (`arch_filter`).
   #
   # When a GitHub release publishes assets for multiple architectures (e.g.
   # both amd64 and arm64), openrepo-sync selects all assets whose filename
@@ -44,19 +42,5 @@ source:
   # higher priority. If no entry matches any asset, all candidates are kept as
   # a fallback so no release is silently dropped.
   #
-  # Default: [amd64, arm64]
-  #   → amd64 packages are preferred automatically; no config needed for the
-  #     common case.
-  #
-  # To prefer arm64 but fall back to amd64 if arm64 is absent:
-  #   arch_filter: [arm64, amd64]
-  #
-  # Single-string shorthand (downloads only that architecture):
-  #   arch_filter: amd64
-  #
-  # To collect every matching asset regardless of architecture:
-  #   arch_filter: []
-  #
-  # amd64 / x86_64 / x86-64 are treated as aliases (any matches all three).
-  # arm64 / aarch64 are treated as aliases (any matches both spellings).
-  arch_filter: [amd64, arm64]   # default; explicit here for illustration
+  # In the global config, `amd64` matches amd64, x86_64, x86-64, and x64.
+  # See config.yaml.example and docs/sources.md for the full architecture table.

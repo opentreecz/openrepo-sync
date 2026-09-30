@@ -14,8 +14,6 @@ name: nginx                # identifier used in log output and --project NAME
 repo_uid: debian-stable    # target repository UID in OpenRepo
 keep_versions: 3           # keep the 3 newest versions; older ones are pruned
 on_conflict: skip          # skip, overwrite, or error (default) when package already exists
-# verify_version: true     # verify .deb/.rpm metadata version matches source (default: true)
-#                           # set to false to skip verification for this project
 
 source:
   type: deb_repo
@@ -34,11 +32,9 @@ source:
   # Default: main
   components: nginx
 
-  # Architecture(s) to mirror. Accepts a single string or a list.
-  #   architectures: amd64
-  #   architectures: [amd64, arm64]
-  # Default: amd64
-  architectures: [amd64, arm64]
+  # Architectures are inherited from global config.yaml (`arch_filter`).
+  # With global `arch_filter: amd64`, Debian repositories fetch `amd64` indexes.
+  # Debian `all` packages are always kept alongside the selected architecture.
 
   # Exact Debian package name(s) to sync (matches the Package: field in the index).
   # Accepts a single string or a list. Optional — omit or set [] to sync all
@@ -82,6 +78,5 @@ source:
 #   layout: flat
 #   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
 #   package_filter: datovka
-#   filename_filter: "datovka_*_amd64.deb"
 #   verify_gpg: true
 #   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key

@@ -9,6 +9,5 @@ source:
   url: https://packages.buildkite.com/helm-linux/helm-debian/any
   suites: any
   components: main
-  architectures: amd64
   package_filter: helm
   verify_gpg: false

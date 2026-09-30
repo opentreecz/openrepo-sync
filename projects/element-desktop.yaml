@@ -9,7 +9,6 @@ source:
   url: https://packages.element.io/debian
   suites: default
   components: main
-  architectures: [amd64, arm64]
   package_filter: element-desktop
   verify_gpg: true
   gpg_key: https://packages.element.io/debian/element-io-archive-keyring.gpg

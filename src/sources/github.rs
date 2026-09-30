@@ -2,14 +2,9 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 use tracing::debug;
 
+use crate::arch::filter_by_filename_arch_priority;
 use crate::models::{PackageVersion, RemotePackage};
 use crate::version::{extract_architecture_from_deb_filename, extract_package_name_from_filename};
-
-/// Architecture names considered equivalent to amd64 for priority matching.
-const AMD64_ALIASES: &[&str] = &["amd64", "x86_64", "x86-64"];
-
-/// Architecture names considered equivalent to arm64 for priority matching.
-const ARM64_ALIASES: &[&str] = &["arm64", "aarch64"];
 
 #[derive(Debug)]
 pub struct GithubSource {
@@ -63,32 +58,6 @@ impl GithubSource {
             package_filter,
             api_base: "https://api.github.com".to_string(),
             client,
-        })
-    }
-
-    /// Returns the priority index of `arch` within `arch_filter` (lower = higher priority),
-    /// or `None` if `arch_filter` is empty (accept-all mode).
-    fn arch_priority(&self, asset_name: &str) -> Option<usize> {
-        if self.arch_filter.is_empty() {
-            return None;
-        }
-        let name_lower = asset_name.to_lowercase();
-        self.arch_filter.iter().enumerate().find_map(|(i, arch)| {
-            let arch_lower = arch.to_lowercase();
-            let is_amd64_entry = AMD64_ALIASES
-                .iter()
-                .any(|a| a.eq_ignore_ascii_case(&arch_lower));
-            let is_arm64_entry = ARM64_ALIASES
-                .iter()
-                .any(|a| a.eq_ignore_ascii_case(&arch_lower));
-            if name_lower.contains(&arch_lower)
-                || (is_amd64_entry && AMD64_ALIASES.iter().any(|a| name_lower.contains(*a)))
-                || (is_arm64_entry && ARM64_ALIASES.iter().any(|a| name_lower.contains(*a)))
-            {
-                Some(i)
-            } else {
-                None
-            }
         })
     }
 
@@ -178,21 +147,10 @@ impl GithubSource {
             //    (lowest-index) architecture.  When no asset matches any
             //    configured arch, all candidates are kept as a fallback so
             //    no release is silently dropped.
-            let selected: Vec<&ReleaseAsset> = if self.arch_filter.is_empty() {
-                candidates
-            } else {
-                let best_priority = candidates
-                    .iter()
-                    .map(|a| self.arch_priority(&a.name).unwrap_or(usize::MAX))
-                    .min();
-                match best_priority {
-                    Some(p) => candidates
-                        .into_iter()
-                        .filter(|a| self.arch_priority(&a.name).unwrap_or(usize::MAX) == p)
-                        .collect(),
-                    None => vec![],
-                }
-            };
+            let selected =
+                filter_by_filename_arch_priority(candidates, &self.arch_filter, |asset| {
+                    &asset.name
+                });
 
             // 3. Apply package_filter (exact package-name match).
             let selected: Vec<&ReleaseAsset> = if self.package_filter.is_empty() {

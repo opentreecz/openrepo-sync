@@ -22,7 +22,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 ## Features
 
 - **6 upstream source types** — GitHub Releases, Debian APT repositories, RPM (YUM/DNF) repositories, static URLs, LATEST URLs, SourceForge
-- **Architecture-aware GitHub downloads** — `arch_filter` selects assets for the preferred architecture; `package_filter` selects specific packages from multi-package releases; `amd64`/`x86_64`/`x86-64` and `arm64`/`aarch64` are treated as aliases
+- **Global architecture filtering** — one `arch_filter` policy applies to all source types; aliases such as `x64`, `x86_64`, `aarch64`, `armv7l`, and `i686` are handled safely
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages` index, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
 - **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload

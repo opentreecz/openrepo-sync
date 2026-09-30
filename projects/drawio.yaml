@@ -8,6 +8,5 @@ source:
   type: github
   owner: jgraph
   repo: drawio-desktop
-  asset_filter: "*amd64*.deb"
-  arch_filter: amd64
+  asset_filter: "*.deb"
   prerelease: false

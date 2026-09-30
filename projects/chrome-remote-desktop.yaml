@@ -9,7 +9,6 @@ source:
   url: https://dl.google.com/linux/chrome-remote-desktop/deb
   suites: stable
   components: main
-  architectures: amd64
   package_filter: chrome-remote-desktop
   verify_gpg: true
   gpg_key: https://dl.google.com/linux/linux_signing_key.pub

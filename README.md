@@ -23,7 +23,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 ## Features
 
 - **6 upstream source types** — GitHub Releases, Debian APT repositories, RPM repositories, static URLs, LATEST URLs, SourceForge
-- **Architecture-aware GitHub downloads** — `arch_filter` picks the right architecture (amd64/x86_64/arm64/aarch64 aliases); `package_filter` selects specific packages from multi-package releases
+- **Global architecture filtering** — one `arch_filter` policy applies to GitHub, SourceForge, Debian repos, RPM repos, and fixed URLs; common aliases such as `x64`, `x86_64`, `aarch64`, `armv7l`, and `i686` are handled safely
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages`, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
 - **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload
@@ -143,14 +143,10 @@ source:
   package_filter: [rpi-imager, rpi-imager-cli]  # optional; exact name(s)
   prerelease: false         # default: false
 
-  # Architecture preference when a release has multiple arch assets.
-  # All assets for the highest-priority matching arch are kept.
-  # amd64/x86_64/x86-64 and arm64/aarch64 are treated as aliases.
-  # Default: [amd64, arm64]. Set [] to disable.
-  arch_filter: [amd64, arm64]
+  # Architecture filtering is inherited from global config.yaml (`arch_filter`).
 ```
 
-**Defaults:** `prerelease: false`, `arch_filter: [amd64, arm64]`, `package_filter: []` (all packages).
+**Defaults:** `prerelease: false`, `package_filter: []` (all packages). Architecture filtering is global and defaults to `arch_filter: amd64`.
 
 ### `deb_repo` — Debian APT Repository
 
@@ -161,9 +157,9 @@ source:
   type: deb_repo
   layout: debian                            # debian (default) or flat
   url: https://nginx.org/packages/debian   # repository base URL
-  suites: bookworm                         # single string or list
+  suites: trixie                           # single string or list
   components: nginx                        # single string or list
-  architectures: [amd64, arm64]            # single string or list
+  # architectures are inherited from global config.yaml (`arch_filter`)
 
   package_filter: nginx                    # exact Package: field match, string or list
   # package_filter: [nginx, nginx-module-njs]
@@ -173,7 +169,7 @@ source:
   gpg_key: https://nginx.org/keys/nginx_signing.key  # URL or inline ASCII-armored key
 ```
 
-**Defaults:** `layout: debian`, `suites: [bookworm]`, `components: [main]`, `architectures: [amd64]`, `verify_gpg: true`. Set `verify_gpg: false` to disable GPG signature verification.
+**Defaults:** `layout: debian`, `suites: [trixie]`, `components: [main]`, `verify_gpg: true`. Architectures come from global `arch_filter`. Set `verify_gpg: false` to disable GPG signature verification.
 
 `keep_versions` is applied per `(package_name, architecture)` group. When `package_filter` contains multiple package names, each selected package/architecture group keeps its own newest N versions.
 
@@ -184,7 +180,6 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  architectures: amd64
   package_filter: [libdatovka0, libdatovka8, datovka]
   verify_gpg: true
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key
@@ -200,13 +195,13 @@ Mirrors packages from any standard RPM repository (repomd.xml + primary.xml/sqli
 source:
   type: rpm_repo
   url: https://download.fedoraproject.org/pub/epel/9/Everything/x86_64
-  architectures: [x86_64, noarch]    # default: [x86_64, noarch]
+  # architectures are inherited from global config.yaml (`arch_filter`); noarch is always included
   package_filter: nginx              # optional; exact name match
   verify_gpg: true                   # default: true
   gpg_key: https://www.redhat.com/security/team/key/
 ```
 
-**Defaults:** `architectures: [x86_64, noarch]`, `verify_gpg: true`. Supports `primary.xml.gz`, `primary.xml.xz`, and `primary.sqlite` metadata formats.
+**Defaults:** `verify_gpg: true`. Architectures come from global `arch_filter`; RPM `noarch` is always included. Supports `primary.xml.gz`, `primary.xml.xz`, and `primary.sqlite` metadata formats.
 
 ### `direct_url` — Static URL
 

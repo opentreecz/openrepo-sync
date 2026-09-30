@@ -12,8 +12,6 @@ source:
   type: deb_repo
   layout: flat
   url: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13
-  architectures: amd64
   package_filter: [libdatovka0, libdatovka8, datovka]
-  # filename_filter: "*_amd64.deb"
   verify_gpg: true
   gpg_key: https://download.opensuse.org/repositories/home:/CZ-NIC:/datovka-latest/Debian_13/Release.key

@@ -4,13 +4,18 @@ use std::path::Path;
 use std::sync::LazyLock;
 use tracing::debug;
 
+use crate::arch::{filename_matches_filter_or_unknown, package_arch_matches_filter};
 use crate::models::{PackageVersion, RemotePackage};
-use crate::version::{extract_version_from_filename, extract_version_from_package};
+use crate::version::{
+    extract_architecture_from_deb_filename, extract_architecture_from_package,
+    extract_version_from_filename, extract_version_from_package,
+};
 
 pub struct DirectUrlSource {
     pub url: String,
     pub is_latest: bool,
     pub sha256: Option<String>,
+    pub arch_filter: Vec<String>,
     client: reqwest::Client,
 }
 
@@ -19,12 +24,14 @@ impl DirectUrlSource {
         url: &str,
         is_latest: bool,
         sha256: Option<&str>,
+        arch_filter: Vec<String>,
         client: reqwest::Client,
     ) -> Result<Self> {
         Ok(Self {
             url: url.to_string(),
             is_latest,
             sha256: sha256.map(|s| s.to_string()),
+            arch_filter,
             client,
         })
     }
@@ -39,15 +46,19 @@ impl DirectUrlSource {
 
     async fn fetch_static_url(&self) -> Result<Vec<RemotePackage>> {
         let filename = url_filename(&self.url);
+        if !filename_matches_filter_or_unknown(&filename, &self.arch_filter) {
+            return Ok(Vec::new());
+        }
         let version = extract_version_from_filename(&filename)
             .unwrap_or(PackageVersion::Raw("0".to_string()));
+        let architecture = extract_architecture_from_deb_filename(&filename);
         Ok(vec![RemotePackage {
             filename,
             version,
             download_url: self.url.clone(),
             sha256: self.sha256.clone(),
             package_name: None,
-            architecture: None,
+            architecture,
         }])
     }
 
@@ -86,6 +97,12 @@ impl DirectUrlSource {
 
         let version = extract_version_from_package(&tmp_path)
             .with_context(|| format!("Version extraction failed for {}", original_filename))?;
+        let architecture = extract_architecture_from_package(&tmp_path)
+            .with_context(|| format!("Architecture extraction failed for {}", original_filename))?;
+
+        if !package_arch_matches_filter(&architecture, &self.arch_filter) {
+            return Ok(Vec::new());
+        }
 
         let versioned_filename = rename_with_version(&original_filename, &version);
 
@@ -109,7 +126,7 @@ impl DirectUrlSource {
             download_url: format!("file://{}", stable_path.display()),
             sha256: self.sha256.clone(),
             package_name: None,
-            architecture: None,
+            architecture: Some(architecture),
         }])
     }
 }
@@ -258,6 +275,7 @@ mod tests {
             "https://example.com/curl-8.5.0_amd64.deb",
             false,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -273,6 +291,7 @@ mod tests {
             "https://example.com/noversion.deb",
             false,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -307,6 +326,7 @@ mod tests {
             &format!("{}/download", server.url),
             true,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -342,6 +362,7 @@ mod tests {
             &format!("{}/mytool.deb", server.url),
             true,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -362,6 +383,7 @@ mod tests {
             &format!("{}/download", server.url),
             true,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -378,6 +400,7 @@ mod tests {
             &format!("{}/download", server.url),
             true,
             None,
+            vec![],
             test_client(),
         )
         .unwrap();

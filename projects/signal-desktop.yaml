@@ -9,7 +9,6 @@ source:
   url: https://updates.signal.org/desktop/apt
   suites: xenial
   components: main
-  architectures: amd64
   package_filter: signal-desktop
   verify_gpg: true
   gpg_key: https://updates.signal.org/desktop/apt/keys.asc

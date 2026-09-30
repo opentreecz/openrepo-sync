@@ -59,13 +59,14 @@ openrepo:
   api_url: "https://openrepo.example.com"
   api_key: "${OPENREPO_API_KEY}"   # supports ${ENV_VAR} expansion
 download_dir: "/tmp/openrepo-sync" # optional, defaults to system temp dir
+arch_filter: amd64                  # global architecture policy
 schedule:
   enabled: true
   interval: "24h"
   run_on_start: true
 .fi
 .PP
-The schedule block is used by \fB\-\-schedule\fR and Docker Compose. Supported interval units are \fBm\fR, \fBh\fR, and \fBd\fR, for example \fI30m\fR, \fI6h\fR, \fI24h\fR, or \fI1d\fR.
+The schedule block is used by \fB\-\-schedule\fR and Docker Compose. Supported interval units are \fBm\fR, \fBh\fR, and \fBd\fR, for example \fI30m\fR, \fI6h\fR, \fI24h\fR, or \fI1d\fR. The global \fIarch_filter\fR applies to all source types.
 .PP
 \fBdeb_repo\fR sources support \fIlayout: debian\fR (default) and \fIlayout: flat\fR for OBS-style repositories with \fIPackages\fR at the repository root. \fIpackage_filter\fR accepts either one package name or a list of package names.
 .SS Project file (projects/<name>.yaml)
@@ -123,9 +124,9 @@ keep_versions: 3
 source:
   type: deb_repo
   url: https://nginx.org/packages/debian
-  suites: bookworm              # default: [bookworm]
+  suites: trixie                # default: [trixie]
   components: nginx             # default: [main]
-  architectures: [amd64, arm64] # default: [amd64]
+  # architectures are inherited from global arch_filter
   package_filter: nginx         # optional
   filename_filter: "nginx_*.deb" # optional glob
   verify_gpg: true              # default: true; set false to skip

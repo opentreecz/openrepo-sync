@@ -1,0 +1,15 @@
+---
+name: google-earth-ec
+repo_uid: deb
+keep_versions: 5
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://dl.google.com/linux/earth/deb
+  suites: stable
+  components: main
+  architectures: amd64
+  package_filter: google-earth-ec-stable
+  verify_gpg: true
+  gpg_key: https://dl.google.com/linux/linux_signing_key.pub

@@ -1,0 +1,13 @@
+---
+name: bluemail
+repo_uid: deb
+keep_versions: 5
+on_conflict: skip
+
+source:
+  type: deb_repo
+  layout: flat
+  url: https://packages.bluemail.me/repos/debian
+  architectures: amd64
+  package_filter: bluemail
+  verify_gpg: false

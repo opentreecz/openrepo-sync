@@ -1,5 +1,6 @@
 use anyhow::{Context, Result, bail};
 use flate2::read::GzDecoder;
+use reqwest::StatusCode;
 use std::collections::BTreeMap;
 use std::io::Read;
 use tracing::debug;
@@ -314,23 +315,49 @@ impl DebRepoSource {
 
         let key_data = crate::gpg::resolve_key(&self.client, key_source).await?;
 
-        // Fetch InRelease (clearsigned).
+        // Prefer InRelease (clearsigned). Some repositories only publish the
+        // older Release + Release.gpg pair, so fall back to detached verify on
+        // a 404.
         let inrelease_url = format!("{release_base_url}/InRelease");
-        let inrelease = self
-            .client
-            .get(&inrelease_url)
-            .send()
-            .await
-            .context("Failed to fetch InRelease")?
-            .error_for_status()
-            .context("InRelease request error")?
-            .bytes()
-            .await
-            .context("Failed to read InRelease body")?;
-
-        let tmp = tempfile::tempdir().context("Failed to create temp dir for GPG")?;
-        crate::gpg::verify_clearsigned(tmp.path(), &key_data, &inrelease, label)
+        match fetch_bytes(&self.client, &inrelease_url, "InRelease").await {
+            Ok(inrelease) => {
+                let tmp = tempfile::tempdir().context("Failed to create temp dir for GPG")?;
+                crate::gpg::verify_clearsigned(tmp.path(), &key_data, &inrelease, label)
+            }
+            Err(err) if is_404(&err) => {
+                let release_url = format!("{release_base_url}/Release");
+                let signature_url = format!("{release_base_url}/Release.gpg");
+                let release = fetch_bytes(&self.client, &release_url, "Release").await?;
+                let signature = fetch_bytes(&self.client, &signature_url, "Release.gpg").await?;
+                let tmp = tempfile::tempdir().context("Failed to create temp dir for GPG")?;
+                crate::gpg::verify_detached(tmp.path(), &key_data, &release, &signature, label)
+            }
+            Err(err) => Err(err).context("InRelease request error"),
+        }
     }
+}
+
+async fn fetch_bytes(client: &reqwest::Client, url: &str, label: &str) -> Result<Vec<u8>> {
+    Ok(client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("Failed to fetch {label}"))?
+        .error_for_status()
+        .with_context(|| format!("{label} request error"))?
+        .bytes()
+        .await
+        .with_context(|| format!("Failed to read {label} body"))?
+        .to_vec())
+}
+
+fn is_404(err: &anyhow::Error) -> bool {
+    err.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .and_then(reqwest::Error::status)
+            == Some(StatusCode::NOT_FOUND)
+    })
 }
 
 #[cfg(test)]
@@ -1206,6 +1233,37 @@ mod tests {
         std::fs::read_to_string(&signed_file).unwrap()
     }
 
+    fn sign_release_detached(content: &str, gnupghome: &std::path::Path) -> String {
+        let tmp = tempfile::tempdir().unwrap();
+        let input_file = tmp.path().join("Release");
+        let sig_file = tmp.path().join("Release.gpg");
+        std::fs::write(&input_file, content).unwrap();
+
+        let output = std::process::Command::new("gpg")
+            .args([
+                "--homedir",
+                gnupghome.to_str().unwrap(),
+                "--batch",
+                "--yes",
+                "--armor",
+                "--detach-sign",
+                "--local-user",
+                "test@example.com",
+                "--output",
+                sig_file.to_str().unwrap(),
+                input_file.to_str().unwrap(),
+            ])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "gpg --detach-sign failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        std::fs::read_to_string(&sig_file).unwrap()
+    }
+
     #[tokio::test]
     async fn gpg_verify_succeeds_with_valid_signature() {
         if !gpg_available() {
@@ -1235,6 +1293,42 @@ mod tests {
         let pkgs = s.fetch_latest(10).await.unwrap();
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].filename, "nginx_1.24.0-1_amd64.deb");
+    }
+
+    #[tokio::test]
+    async fn gpg_verify_falls_back_to_release_gpg_when_inrelease_missing() {
+        if !gpg_available() {
+            eprintln!("skipping: gpg not available");
+            return;
+        }
+
+        let (pubkey, gnupghome) = generate_test_gpg_key();
+        let release = "Suite: stable\nCodename: stable\n";
+        let signature = sign_release_detached(release, gnupghome.path());
+        let body = packages_text(&[(
+            "chrome-remote-desktop",
+            "1.2.3-1",
+            "amd64",
+            "pool/chrome-remote-desktop_1.2.3-1_amd64.deb",
+        )]);
+
+        let server = MockServer::start(vec![
+            MockResponse::json(404, "not found"), // InRelease
+            MockResponse::json(200, release),     // Release
+            MockResponse::json(200, &signature),  // Release.gpg
+            MockResponse::json(404, "not found"), // Packages.gz
+            MockResponse::json(200, &body),       // Packages
+        ]);
+        let s = source_with_gpg("placeholder", Some(&pubkey)).with_url(&server.url);
+
+        let pkgs = s.fetch_latest(10).await.unwrap();
+        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs[0].filename, "chrome-remote-desktop_1.2.3-1_amd64.deb");
+
+        let requests = server.requests();
+        assert!(requests[0].starts_with("GET /dists/stable/InRelease "));
+        assert!(requests[1].starts_with("GET /dists/stable/Release "));
+        assert!(requests[2].starts_with("GET /dists/stable/Release.gpg "));
     }
 
     #[tokio::test]

@@ -186,6 +186,12 @@ pub enum SourceConfig {
             deserialize_with = "deserialize_string_or_list"
         )]
         arch_filter: Vec<String>,
+        /// Exact package name(s) to sync. The package name is extracted from
+        /// the asset filename (e.g. `rpi-imager-cli` from
+        /// `rpi-imager-cli_2.0.11.1-1_amd64.deb`). Empty means accept all.
+        /// Same behaviour as `package_filter` in `deb_repo` and `rpm_repo`.
+        #[serde(default, deserialize_with = "deserialize_string_or_list")]
+        package_filter: Vec<String>,
     },
     DirectUrl {
         url: String,
@@ -203,6 +209,10 @@ pub enum SourceConfig {
         folder: Option<String>,
         #[serde(default)]
         filename_filter: Option<String>,
+        /// Exact package name(s) to sync, extracted from the filename.
+        /// Same behaviour as `package_filter` in `deb_repo` and `rpm_repo`.
+        #[serde(default, deserialize_with = "deserialize_string_or_list")]
+        package_filter: Vec<String>,
     },
     DebRepo {
         url: String,
@@ -560,6 +570,65 @@ source:
     }
 
     #[test]
+    fn project_config_github_package_filter_list() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+  package_filter: [rpi-imager, rpi-imager-cli]
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { package_filter, .. } = p.source {
+            assert_eq!(package_filter, vec!["rpi-imager", "rpi-imager-cli"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_github_package_filter_single_string() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+  package_filter: curl
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { package_filter, .. } = p.source {
+            assert_eq!(package_filter, vec!["curl"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_github_package_filter_defaults_to_empty() {
+        let yaml = r#"
+name: tool
+repo_uid: r
+keep_versions: 1
+source:
+  type: github
+  owner: acme
+  repo: tool
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Github { package_filter, .. } = p.source {
+            assert!(package_filter.is_empty());
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
     fn project_config_github_arch_filter_single_string() {
         let yaml = r#"
 name: tool
@@ -574,6 +643,43 @@ source:
         let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         if let SourceConfig::Github { arch_filter, .. } = p.source {
             assert_eq!(arch_filter, vec!["arm64"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_sourceforge_package_filter() {
+        let yaml = r#"
+name: sfpkg
+repo_uid: sf
+keep_versions: 2
+source:
+  type: sourceforge
+  project: my-project
+  package_filter: [my-tool, my-tool-cli]
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Sourceforge { package_filter, .. } = p.source {
+            assert_eq!(package_filter, vec!["my-tool", "my-tool-cli"]);
+        } else {
+            panic!("wrong variant");
+        }
+    }
+
+    #[test]
+    fn project_config_sourceforge_package_filter_defaults_to_empty() {
+        let yaml = r#"
+name: sfpkg
+repo_uid: sf
+keep_versions: 2
+source:
+  type: sourceforge
+  project: my-project
+"#;
+        let p: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
+        if let SourceConfig::Sourceforge { package_filter, .. } = p.source {
+            assert!(package_filter.is_empty());
         } else {
             panic!("wrong variant");
         }

@@ -23,7 +23,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 ## Features
 
 - **6 upstream source types** — GitHub Releases, Debian APT repositories, RPM repositories, static URLs, LATEST URLs, SourceForge
-- **Architecture-aware GitHub downloads** — `arch_filter` picks the right asset (amd64/x86_64/arm64/aarch64 aliases) when a release ships multiple architecture variants
+- **Architecture-aware GitHub downloads** — `arch_filter` picks the right architecture (amd64/x86_64/arm64/aarch64 aliases); `package_filter` selects specific packages from multi-package releases
 - **Debian APT repository mirroring** — fetches `Packages.gz`/`Packages`, filters by package name and/or filename glob, supports multiple suites/components/architectures, optional GPG signature verification
 - **Automatic version detection** — extracts versions from filenames, or calls `dpkg-deb`/`rpm` on the package itself for LATEST URLs
 - **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload
@@ -137,18 +137,20 @@ schedule:
 ```yaml
 source:
   type: github
-  owner: curl               # GitHub org or user
-  repo: curl                # repository name
+  owner: raspberrypi        # GitHub org or user
+  repo: rpi-imager          # repository name
   asset_filter: "*.deb"    # optional glob; omit to keep all assets
+  package_filter: [rpi-imager, rpi-imager-cli]  # optional; exact name(s)
   prerelease: false         # default: false
 
   # Architecture preference when a release has multiple arch assets.
-  # First match wins. amd64/x86_64/x86-64 and arm64/aarch64 are treated
-  # as aliases. Default: [amd64, arm64]. Set [] to disable.
+  # All assets for the highest-priority matching arch are kept.
+  # amd64/x86_64/x86-64 and arm64/aarch64 are treated as aliases.
+  # Default: [amd64, arm64]. Set [] to disable.
   arch_filter: [amd64, arm64]
 ```
 
-**Defaults:** `prerelease: false`, `arch_filter: [amd64, arm64]`.
+**Defaults:** `prerelease: false`, `arch_filter: [amd64, arm64]`, `package_filter: []` (all packages).
 
 ### `deb_repo` — Debian APT Repository
 
@@ -236,9 +238,10 @@ source:
   project: my-sf-project
   folder: "releases/linux"   # optional subfolder
   filename_filter: "*.deb"   # optional glob
+  package_filter: my-tool     # optional exact package name
 ```
 
-All fields except `project` are optional. Defaults: root listing (no `folder`), all files (no `filename_filter`).
+All fields except `project` are optional. Defaults: root listing (no `folder`), all files (no `filename_filter`), all packages (no `package_filter`).
 
 ---
 

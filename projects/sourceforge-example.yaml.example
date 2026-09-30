@@ -20,3 +20,13 @@ source:
   project: my-sf-project      # SourceForge project identifier (from the URL)
   folder: "releases/linux"    # optional; default: root listing (omit for project root)
   filename_filter: "*.deb"    # optional; default: all files (omit to keep all)
+
+  # package_filter — exact package name(s) to sync (optional).
+  #
+  # Filters files by extracted package name (the part of the filename before
+  # the version). Accepts a single string or a list. Omit or set [] to sync all
+  # packages. Same behaviour as package_filter in github, deb_repo, and
+  # rpm_repo sources.
+  #
+  # package_filter: my-tool
+  # package_filter: [my-tool, my-tool-cli]

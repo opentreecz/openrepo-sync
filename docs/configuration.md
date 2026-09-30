@@ -99,9 +99,10 @@ See [Source Types](../sources/) for the full field reference and examples.
 ```yaml
 source:
   type: github
-  owner: curl
-  repo: curl
+  owner: raspberrypi
+  repo: rpi-imager
   asset_filter: "*.deb"              # optional; omit to keep all assets
+  package_filter: [rpi-imager, rpi-imager-cli]  # optional; string or list
   prerelease: false                   # default: false
   arch_filter: [amd64, arm64]         # default: [amd64, arm64]
 ```
@@ -168,6 +169,7 @@ source:
   project: my-sf-project
   folder: "releases/linux"            # optional; default: root listing
   filename_filter: "*.deb"            # optional; default: all files
+  package_filter: my-tool              # optional; string or list
 ```
 
 ---

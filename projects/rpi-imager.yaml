@@ -19,4 +19,5 @@ source:
   owner: raspberrypi            # GitHub organisation or user
   repo: rpi-imager                # repository name
   asset_filter: "*.deb"    # optional glob; omit to keep every asset per release
+  package_filter: [rpi-imager, rpi-imager-cli]
   prerelease: false         # optional, default: false — include pre-releases?

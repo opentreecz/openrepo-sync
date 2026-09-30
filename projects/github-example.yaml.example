@@ -23,13 +23,26 @@ source:
   asset_filter: "*.deb"    # optional glob; omit to keep every asset per release
   prerelease: false         # optional, default: false — include pre-releases?
 
+  # package_filter — exact package name(s) to sync (optional).
+  #
+  # When a GitHub release publishes multiple packages (e.g. rpi-imager and
+  # rpi-imager-cli), use package_filter to select which ones to sync. The
+  # package name is extracted from the asset filename, e.g. "rpi-imager-cli"
+  # from "rpi-imager-cli_2.0.11-1_amd64.deb".
+  #
+  # Accepts a single string or a list. Omit or set [] to sync all packages.
+  # Same behaviour as package_filter in deb_repo and rpm_repo sources.
+  #
+  # package_filter: curl
+  # package_filter: [rpi-imager, rpi-imager-cli]
+
   # arch_filter — ordered architecture preference list (optional).
   #
   # When a GitHub release publishes assets for multiple architectures (e.g.
-  # both amd64 and arm64), openrepo-sync picks the first asset whose filename
-  # contains an entry from this list. Earlier entries have higher priority.
-  # If no entry matches any asset, the first candidate is used as a fallback
-  # so no release is silently dropped.
+  # both amd64 and arm64), openrepo-sync selects all assets whose filename
+  # matches the highest-priority entry from this list. Earlier entries have
+  # higher priority. If no entry matches any asset, all candidates are kept as
+  # a fallback so no release is silently dropped.
   #
   # Default: [amd64, arm64]
   #   → amd64 packages are preferred automatically; no config needed for the

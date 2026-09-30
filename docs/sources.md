@@ -23,27 +23,40 @@ Fetches release assets via the [GitHub Releases API](https://docs.github.com/en/
 ```yaml
 source:
   type: github
-  owner: curl               # GitHub organisation or user
-  repo: curl                # repository name
+  owner: raspberrypi        # GitHub organisation or user
+  repo: rpi-imager          # repository name
   asset_filter: "*.deb"    # optional glob; omit to keep all assets per release
+  package_filter: [rpi-imager, rpi-imager-cli]  # optional; exact package name(s)
   prerelease: false         # default: false — include pre-releases?
   arch_filter: [amd64, arm64]  # see below
 ```
 
 ### `arch_filter`
 
-When a release publishes assets for multiple architectures (e.g. both `tool_amd64.deb` and `tool_arm64.deb`), `arch_filter` selects the single best-matching asset per release. The list is an ordered preference — the first entry that matches an asset filename wins.
+When a release publishes assets for multiple architectures (e.g. both `tool_amd64.deb` and `tool_arm64.deb`), `arch_filter` selects all assets matching the preferred architecture per release. The list is an ordered preference — the first entry that matches any asset filename wins, and all assets matching that entry are kept.
 
 | Setting | Behaviour |
 |---|---|
 | `arch_filter: [amd64, arm64]` | Prefer amd64, fall back to arm64 **(default)** |
 | `arch_filter: [arm64, amd64]` | Prefer arm64 instead |
 | `arch_filter: amd64` | Single-string shorthand — download only amd64 |
-| `arch_filter: []` | Disable arch filtering — keep all matching assets |
+| `arch_filter: []` | Disable arch filtering — keep all assets per release |
 
 **Aliases:** `amd64`, `x86_64`, and `x86-64` are treated as equivalent. `arm64` and `aarch64` are treated as equivalent. Specifying any one of an alias group matches assets named with any spelling in that group.
 
-If no asset filename matches any arch entry, the first candidate is used as a fallback so no release is silently dropped.
+If no asset filename matches any arch entry, all candidates are kept as a fallback so no release is silently dropped.
+
+### `package_filter`
+
+When a release publishes multiple packages (e.g. both `rpi-imager` and `rpi-imager-cli`), `package_filter` selects which ones to sync. The package name is extracted from the asset filename. For `.deb` files, this is the part before the first `_` (e.g. `rpi-imager-cli` from `rpi-imager-cli_2.0.11.1-1_amd64.deb`).
+
+| Setting | Behaviour |
+|---|---|
+| (omitted or `[]`) | Sync all packages **(default)** |
+| `package_filter: rpi-imager` | Single string — sync only `rpi-imager` |
+| `package_filter: [rpi-imager, rpi-imager-cli]` | List — sync both packages |
+
+Same behaviour as `package_filter` in `deb_repo` and `rpm_repo` sources: empty means accept all, non-empty means exact name match.
 
 ### Fields
 
@@ -52,6 +65,7 @@ If no asset filename matches any arch entry, the first candidate is used as a fa
 | `owner` | Yes | — | GitHub organisation or username |
 | `repo` | Yes | — | Repository name |
 | `asset_filter` | No | (all assets) | Glob pattern to filter release assets |
+| `package_filter` | No | (all packages) | Exact package name match — single string or list |
 | `prerelease` | No | `false` | Include pre-release versions |
 | `arch_filter` | No | `[amd64, arm64]` | Architecture preference list |
 
@@ -59,7 +73,7 @@ If no asset filename matches any arch entry, the first candidate is used as a fa
 
 - Version is taken from the release `tag_name` (e.g. `v8.5.0` → `8.5.0`)
 - Draft releases are always skipped
-- Results are paginated (100 per page) until `keep_versions` assets are found
+- Results are paginated (100 per page) until assets from `keep_versions` releases are collected
 - Unauthenticated requests are subject to GitHub's 60 req/hour rate limit per IP
 
 ---
@@ -311,6 +325,7 @@ source:
   project: my-sf-project
   folder: "releases/linux"   # optional subfolder path; omit for root listing
   filename_filter: "*.deb"   # optional glob filter
+  package_filter: my-tool     # optional exact package name filter
 ```
 
 ### Fields
@@ -320,6 +335,7 @@ source:
 | `project` | Yes | — | SourceForge project identifier (from the URL) |
 | `folder` | No | (root listing) | Subfolder path within the project's Files section |
 | `filename_filter` | No | (all files) | Glob pattern to filter filenames |
+| `package_filter` | No | (all packages) | Exact package name match — single string or list |
 
 ### Behaviour
 

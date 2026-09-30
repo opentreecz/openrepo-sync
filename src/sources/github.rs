@@ -3,6 +3,7 @@ use serde::Deserialize;
 use tracing::debug;
 
 use crate::models::{PackageVersion, RemotePackage};
+use crate::version::{extract_architecture_from_deb_filename, extract_package_name_from_filename};
 
 /// Architecture names considered equivalent to amd64 for priority matching.
 const AMD64_ALIASES: &[&str] = &["amd64", "x86_64", "x86-64"];
@@ -20,6 +21,8 @@ pub struct GithubSource {
     /// multiple architectures, the first arch in this list that appears in an
     /// asset filename wins. Empty means "accept everything" (old behaviour).
     pub arch_filter: Vec<String>,
+    /// Exact package name(s) to sync. Empty means accept all.
+    pub package_filter: Vec<String>,
     api_base: String,
     client: reqwest::Client,
 }
@@ -45,6 +48,7 @@ impl GithubSource {
         asset_filter: Option<&str>,
         prerelease: bool,
         arch_filter: Vec<String>,
+        package_filter: Vec<String>,
         client: reqwest::Client,
     ) -> Result<Self> {
         let pattern = asset_filter
@@ -56,6 +60,7 @@ impl GithubSource {
             asset_filter: pattern,
             prerelease,
             arch_filter,
+            package_filter,
             api_base: "https://api.github.com".to_string(),
             client,
         })
@@ -136,14 +141,19 @@ impl GithubSource {
     }
 
     /// Append matching assets from `releases` to `packages`, skipping drafts
-    /// and (unless enabled) prereleases. Returns true once `n` packages have
-    /// been collected and pagination can stop.
+    /// and (unless enabled) prereleases.  The parameter `n` is the number of
+    /// *releases* (versions) to collect — not individual assets.  Returns true
+    /// once assets from `n` releases have been collected and pagination can
+    /// stop.
     fn collect_release_packages(
         &self,
         releases: Vec<Release>,
         packages: &mut Vec<RemotePackage>,
         n: usize,
     ) -> bool {
+        let mut versions_collected: std::collections::HashSet<String> =
+            packages.iter().map(|pkg| pkg.version.to_string()).collect();
+
         for release in releases {
             if release.draft {
                 continue;
@@ -153,7 +163,7 @@ impl GithubSource {
             }
             let version = PackageVersion::parse(&release.tag_name);
 
-            // Apply asset_filter first, then arch selection.
+            // 1. Apply asset_filter (glob on filename).
             let candidates: Vec<&ReleaseAsset> = release
                 .assets
                 .iter()
@@ -164,20 +174,44 @@ impl GithubSource {
                 })
                 .collect();
 
-            // When arch_filter is non-empty, pick the single best-matching asset
-            // per release. "Best" = lowest priority index in arch_filter. Ties
-            // are broken by asset order (first wins). If no asset matches any
-            // arch, fall back to the first candidate so we never silently drop
-            // a release entirely.
+            // 2. Apply arch_filter: keep ALL assets matching the best
+            //    (lowest-index) architecture.  When no asset matches any
+            //    configured arch, all candidates are kept as a fallback so
+            //    no release is silently dropped.
             let selected: Vec<&ReleaseAsset> = if self.arch_filter.is_empty() {
                 candidates
             } else {
-                let best = candidates
+                let best_priority = candidates
                     .iter()
-                    .copied()
-                    .min_by_key(|a| self.arch_priority(&a.name).unwrap_or(usize::MAX));
-                best.into_iter().collect()
+                    .map(|a| self.arch_priority(&a.name).unwrap_or(usize::MAX))
+                    .min();
+                match best_priority {
+                    Some(p) => candidates
+                        .into_iter()
+                        .filter(|a| self.arch_priority(&a.name).unwrap_or(usize::MAX) == p)
+                        .collect(),
+                    None => vec![],
+                }
             };
+
+            // 3. Apply package_filter (exact package-name match).
+            let selected: Vec<&ReleaseAsset> = if self.package_filter.is_empty() {
+                selected
+            } else {
+                selected
+                    .into_iter()
+                    .filter(|a| {
+                        extract_package_name_from_filename(&a.name)
+                            .is_some_and(|name| self.package_filter.iter().any(|f| f == &name))
+                    })
+                    .collect()
+            };
+
+            if selected.is_empty() {
+                continue;
+            }
+
+            versions_collected.insert(version.to_string());
 
             for asset in selected {
                 packages.push(RemotePackage {
@@ -185,12 +219,13 @@ impl GithubSource {
                     version: version.clone(),
                     download_url: asset.browser_download_url.clone(),
                     sha256: None,
-                    package_name: None,
-                    architecture: None,
+                    package_name: extract_package_name_from_filename(&asset.name),
+                    architecture: extract_architecture_from_deb_filename(&asset.name),
                 });
-                if packages.len() >= n {
-                    return true;
-                }
+            }
+
+            if versions_collected.len() >= n {
+                return true;
             }
         }
         false
@@ -231,6 +266,7 @@ mod tests {
             asset_filter,
             prerelease,
             vec![],
+            vec![],
             test_client(),
         )
         .unwrap()
@@ -243,6 +279,7 @@ mod tests {
             None,
             false,
             vec!["amd64".to_string(), "arm64".to_string()],
+            vec![],
             test_client(),
         )
         .unwrap()
@@ -250,8 +287,16 @@ mod tests {
 
     #[test]
     fn invalid_asset_filter_is_rejected() {
-        let err = GithubSource::new("acme", "tool", Some("[bad"), false, vec![], test_client())
-            .unwrap_err();
+        let err = GithubSource::new(
+            "acme",
+            "tool",
+            Some("[bad"),
+            false,
+            vec![],
+            vec![],
+            test_client(),
+        )
+        .unwrap_err();
         assert!(err.to_string().contains("Invalid asset_filter"));
     }
 
@@ -331,9 +376,9 @@ mod tests {
         assert_eq!(pkgs[0].filename, "tool.deb");
     }
 
-    // With arch_filter empty, all assets per release are collected (old behaviour).
+    // n counts releases (versions), not individual assets.
     #[test]
-    fn stops_after_n_packages() {
+    fn stops_after_n_releases() {
         let source = new_no_arch(None, false);
         let mut packages = Vec::new();
         let done = source.collect_release_packages(
@@ -345,8 +390,11 @@ mod tests {
             2,
         );
         assert!(done);
-        assert_eq!(packages.len(), 2);
+        // Both releases collected — 3 total assets (2 + 1)
+        assert_eq!(packages.len(), 3);
+        assert_eq!(packages[0].filename, "a.deb");
         assert_eq!(packages[1].filename, "b.deb");
+        assert_eq!(packages[2].filename, "c.deb");
     }
 
     #[test]
@@ -402,6 +450,7 @@ mod tests {
             None,
             false,
             vec!["amd64".to_string()],
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -431,6 +480,7 @@ mod tests {
             None,
             false,
             vec!["arm64".to_string(), "amd64".to_string()],
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -449,8 +499,9 @@ mod tests {
     }
 
     #[test]
-    fn arch_filter_falls_back_to_first_asset_when_no_arch_matches() {
-        // None of the assets contain a recognised arch — take the first candidate.
+    fn arch_filter_falls_back_to_all_candidates_when_no_arch_matches() {
+        // None of the assets contain a recognised arch — keep all candidates
+        // so no release is silently dropped.
         let source = new_default_arch();
         let pkgs = collect(
             &source,
@@ -465,8 +516,9 @@ mod tests {
             )],
             10,
         );
-        assert_eq!(pkgs.len(), 1);
+        assert_eq!(pkgs.len(), 2);
         assert_eq!(pkgs[0].filename, "tool_1.0.0_generic.deb");
+        assert_eq!(pkgs[1].filename, "tool_1.0.0_other.deb");
     }
 
     #[test]
@@ -521,6 +573,7 @@ mod tests {
             None,
             false,
             vec!["amd64".to_string(), "arm64".to_string()],
+            vec![],
             test_client(),
         )
         .unwrap();
@@ -553,7 +606,7 @@ mod tests {
             MockResponse::json(200, page1),
             MockResponse::json(200, "[]"), // second page empty → stop
         ]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
+        let source = GithubSource::new("acme", "tool", None, false, vec![], vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -572,7 +625,7 @@ mod tests {
             "assets":[{"name":"tool.deb","browser_download_url":"https://x/tool.deb"}]}]"#;
         // Only one response: reaching n on page 1 must not request page 2.
         let server = MockServer::start(vec![MockResponse::json(200, page1)]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
+        let source = GithubSource::new("acme", "tool", None, false, vec![], vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -582,9 +635,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fetch_latest_counts_releases_across_pages() {
+        let page1 = r#"[{"tag_name":"v2.0.0","prerelease":false,"draft":false,
+            "assets":[
+                {"name":"tool-a_2.0.0_amd64.deb","browser_download_url":"https://x/a.deb"},
+                {"name":"tool-b_2.0.0_amd64.deb","browser_download_url":"https://x/b.deb"}
+            ]}]"#;
+        let page2 = r#"[{"tag_name":"v1.0.0","prerelease":false,"draft":false,
+            "assets":[
+                {"name":"tool-a_1.0.0_amd64.deb","browser_download_url":"https://x/a1.deb"},
+                {"name":"tool-b_1.0.0_amd64.deb","browser_download_url":"https://x/b1.deb"}
+            ]}]"#;
+        let server = MockServer::start(vec![
+            MockResponse::json(200, page1),
+            MockResponse::json(200, page2),
+        ]);
+        let source = GithubSource::new("acme", "tool", None, false, vec![], vec![], test_client())
+            .unwrap()
+            .with_api_base(&server.url);
+
+        let pkgs = source.fetch_latest(2).await.unwrap();
+
+        assert_eq!(pkgs.len(), 4);
+        assert_eq!(server.requests().len(), 2);
+    }
+
+    #[tokio::test]
     async fn fetch_latest_api_error_fails() {
         let server = MockServer::start(vec![MockResponse::json(500, "{}")]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
+        let source = GithubSource::new("acme", "tool", None, false, vec![], vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
@@ -595,11 +674,196 @@ mod tests {
     #[tokio::test]
     async fn fetch_latest_invalid_json_fails() {
         let server = MockServer::start(vec![MockResponse::json(200, "not-json")]);
-        let source = GithubSource::new("acme", "tool", None, false, vec![], test_client())
+        let source = GithubSource::new("acme", "tool", None, false, vec![], vec![], test_client())
             .unwrap()
             .with_api_base(&server.url);
 
         let err = source.fetch_latest(1).await.unwrap_err();
         assert!(err.to_string().contains("Failed to parse GitHub releases"));
+    }
+
+    // ── multi-package + package_filter ─────────────────────────────────────
+
+    #[test]
+    fn arch_filter_selects_all_assets_at_best_priority() {
+        // Simulates rpi-imager: two different amd64 packages + two arm64 packages.
+        // arch_filter [amd64, arm64] should keep BOTH amd64 packages.
+        let source = new_default_arch();
+        let pkgs = collect(
+            &source,
+            vec![release(
+                "v2.0.11",
+                false,
+                false,
+                vec![
+                    asset("rpi-imager-cli_2.0.11-1_amd64.deb"),
+                    asset("rpi-imager-cli_2.0.11-1_arm64.deb"),
+                    asset("rpi-imager_2.0.11-1_amd64.deb"),
+                    asset("rpi-imager_2.0.11-1_arm64.deb"),
+                ],
+            )],
+            10,
+        );
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].filename, "rpi-imager-cli_2.0.11-1_amd64.deb");
+        assert_eq!(pkgs[1].filename, "rpi-imager_2.0.11-1_amd64.deb");
+    }
+
+    #[test]
+    fn package_filter_exact_name_match() {
+        let source = GithubSource::new(
+            "acme",
+            "tool",
+            Some("*.deb"),
+            false,
+            vec!["amd64".to_string()],
+            vec!["rpi-imager".to_string(), "rpi-imager-cli".to_string()],
+            test_client(),
+        )
+        .unwrap();
+        let pkgs = collect(
+            &source,
+            vec![release(
+                "v2.0.11",
+                false,
+                false,
+                vec![
+                    asset("rpi-imager-cli_2.0.11-1_amd64.deb"),
+                    asset("rpi-imager-embedded_2.0.11-1_amd64.deb"),
+                    asset("rpi-imager_2.0.11-1_amd64.deb"),
+                ],
+            )],
+            10,
+        );
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].filename, "rpi-imager-cli_2.0.11-1_amd64.deb");
+        assert_eq!(pkgs[1].filename, "rpi-imager_2.0.11-1_amd64.deb");
+    }
+
+    #[test]
+    fn package_filter_empty_accepts_all() {
+        let source = GithubSource::new(
+            "acme",
+            "tool",
+            Some("*.deb"),
+            false,
+            vec!["amd64".to_string()],
+            vec![],
+            test_client(),
+        )
+        .unwrap();
+        let pkgs = collect(
+            &source,
+            vec![release(
+                "v1.0.0",
+                false,
+                false,
+                vec![
+                    asset("tool-a_1.0.0_amd64.deb"),
+                    asset("tool-b_1.0.0_amd64.deb"),
+                ],
+            )],
+            10,
+        );
+        assert_eq!(pkgs.len(), 2);
+    }
+
+    #[test]
+    fn package_filter_combined_with_arch_and_asset_filter() {
+        // Full pipeline: asset_filter → arch_filter → package_filter
+        let source = GithubSource::new(
+            "rpi",
+            "imager",
+            Some("*.deb"),
+            false,
+            vec!["amd64".to_string(), "arm64".to_string()],
+            vec!["rpi-imager".to_string(), "rpi-imager-cli".to_string()],
+            test_client(),
+        )
+        .unwrap();
+        let pkgs = collect(
+            &source,
+            vec![release(
+                "v2.0.11",
+                false,
+                false,
+                vec![
+                    // Non-.deb filtered by asset_filter
+                    asset("imager-v2.0.11.exe"),
+                    asset("rpi-imager-v2.0.11.dmg"),
+                    // arm64 filtered by arch_filter (amd64 wins)
+                    asset("rpi-imager-cli_2.0.11-1_arm64.deb"),
+                    // Passes all filters
+                    asset("rpi-imager-cli_2.0.11-1_amd64.deb"),
+                    asset("rpi-imager_2.0.11-1_amd64.deb"),
+                    // Filtered by package_filter
+                    asset("rpi-imager-embedded_2.0.11-1_amd64.deb"),
+                ],
+            )],
+            10,
+        );
+        assert_eq!(pkgs.len(), 2);
+        assert_eq!(pkgs[0].filename, "rpi-imager-cli_2.0.11-1_amd64.deb");
+        assert_eq!(pkgs[1].filename, "rpi-imager_2.0.11-1_amd64.deb");
+    }
+
+    #[test]
+    fn package_name_and_architecture_populated() {
+        let source = new_no_arch(None, false);
+        let pkgs = collect(
+            &source,
+            vec![release(
+                "v1.0.0",
+                false,
+                false,
+                vec![asset("rpi-imager-cli_1.0.0-1_amd64.deb")],
+            )],
+            10,
+        );
+        assert_eq!(pkgs[0].package_name.as_deref(), Some("rpi-imager-cli"));
+        assert_eq!(pkgs[0].architecture.as_deref(), Some("amd64"));
+    }
+
+    #[test]
+    fn counts_releases_not_individual_assets() {
+        // With n=3 and 2 packages per release, we should get 3 releases (6 assets),
+        // not stop after 3 individual assets.
+        let source = new_default_arch();
+        let mut packages = Vec::new();
+        let done = source.collect_release_packages(
+            vec![
+                release(
+                    "v3.0.0",
+                    false,
+                    false,
+                    vec![
+                        asset("tool-a_3.0.0_amd64.deb"),
+                        asset("tool-b_3.0.0_amd64.deb"),
+                    ],
+                ),
+                release(
+                    "v2.0.0",
+                    false,
+                    false,
+                    vec![
+                        asset("tool-a_2.0.0_amd64.deb"),
+                        asset("tool-b_2.0.0_amd64.deb"),
+                    ],
+                ),
+                release(
+                    "v1.0.0",
+                    false,
+                    false,
+                    vec![
+                        asset("tool-a_1.0.0_amd64.deb"),
+                        asset("tool-b_1.0.0_amd64.deb"),
+                    ],
+                ),
+            ],
+            &mut packages,
+            3,
+        );
+        assert!(done);
+        assert_eq!(packages.len(), 6);
     }
 }

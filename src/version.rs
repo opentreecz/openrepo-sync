@@ -62,6 +62,67 @@ pub fn extract_version_rpm(path: &Path) -> Result<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
+/// Extract the package name from a filename.
+///
+/// For `.deb` files the standard format is `name_version_arch.deb` — the name
+/// is everything before the first `_`.  For `.rpm` and generic files the name
+/// is everything before the first version-like pattern (matched by
+/// [`VERSION_RE`]).
+///
+/// Returns `None` when no name can be determined.
+pub fn extract_package_name_from_filename(filename: &str) -> Option<String> {
+    // .deb: standard Debian naming  name_version_arch.deb
+    if filename.ends_with(".deb") {
+        let name = filename.split('_').next()?;
+        if !name.is_empty() && name != filename {
+            return Some(name.to_string());
+        }
+    }
+
+    // .rpm and other files: take everything before the first VERSION_RE match.
+    // The regex matches a separator (- or _) followed by a version, so the
+    // package name is the slice before that separator.
+    let stripped = filename
+        .trim_end_matches(".deb")
+        .trim_end_matches(".rpm")
+        .trim_end_matches(".tar.gz")
+        .trim_end_matches(".tar.bz2")
+        .trim_end_matches(".tar.xz")
+        .trim_end_matches(".zip")
+        .trim_end_matches(".tgz")
+        .trim_end_matches(".dmg")
+        .trim_end_matches(".exe");
+
+    VERSION_RE.find(stripped).and_then(|m| {
+        let name = &stripped[..m.start()];
+        if name.is_empty() {
+            None
+        } else {
+            Some(name.to_string())
+        }
+    })
+}
+
+/// Extract the architecture from a `.deb` filename.
+///
+/// Standard Debian naming: `name_version_arch.deb`.  The architecture is the
+/// third `_`-delimited segment after stripping the `.deb` extension.
+///
+/// Returns `None` for non-deb files or filenames that don't follow the
+/// convention (e.g. only two segments).
+pub fn extract_architecture_from_deb_filename(filename: &str) -> Option<String> {
+    if !filename.ends_with(".deb") {
+        return None;
+    }
+    let base = filename.trim_end_matches(".deb");
+    let parts: Vec<&str> = base.splitn(3, '_').collect();
+    if parts.len() == 3 && !parts[2].is_empty() {
+        Some(parts[2].to_string())
+    } else {
+        None
+    }
+}
+
 pub fn extract_version_from_package(path: &Path) -> Result<PackageVersion> {
     let ext = path
         .extension()
@@ -116,6 +177,90 @@ mod tests {
     fn filename_build_metadata() {
         let v = extract_version_from_filename("tool-1.0.0+build42.deb").unwrap();
         assert_eq!(v.to_string(), "1.0.0+build42");
+    }
+
+    // ── extract_package_name_from_filename ────────────────────────────────
+
+    #[test]
+    fn package_name_deb_standard() {
+        assert_eq!(
+            extract_package_name_from_filename("rpi-imager-cli_2.0.11.1-1_amd64.deb"),
+            Some("rpi-imager-cli".to_string())
+        );
+    }
+
+    #[test]
+    fn package_name_deb_simple() {
+        assert_eq!(
+            extract_package_name_from_filename("rpi-imager_2.0.11.1-1_amd64.deb"),
+            Some("rpi-imager".to_string())
+        );
+    }
+
+    #[test]
+    fn package_name_rpm() {
+        assert_eq!(
+            extract_package_name_from_filename("nginx-1.24.0-1.el9.x86_64.rpm"),
+            Some("nginx".to_string())
+        );
+    }
+
+    #[test]
+    fn package_name_generic() {
+        assert_eq!(
+            extract_package_name_from_filename("tool-1.2.3.tar.gz"),
+            Some("tool".to_string())
+        );
+    }
+
+    #[test]
+    fn package_name_no_version_returns_none() {
+        assert_eq!(extract_package_name_from_filename("LATEST.deb"), None);
+        assert_eq!(extract_package_name_from_filename("package.deb"), None);
+    }
+
+    #[test]
+    fn package_name_deb_no_underscore_falls_back_to_regex() {
+        // Non-standard deb naming (no underscore) falls through to VERSION_RE
+        assert_eq!(
+            extract_package_name_from_filename("tool-1.0.0.deb"),
+            Some("tool".to_string())
+        );
+    }
+
+    // ── extract_architecture_from_deb_filename ────────────────────────────
+
+    #[test]
+    fn arch_from_deb_standard() {
+        assert_eq!(
+            extract_architecture_from_deb_filename("rpi-imager-cli_2.0.11.1-1_amd64.deb"),
+            Some("amd64".to_string())
+        );
+    }
+
+    #[test]
+    fn arch_from_deb_arm64() {
+        assert_eq!(
+            extract_architecture_from_deb_filename("tool_1.0.0_arm64.deb"),
+            Some("arm64".to_string())
+        );
+    }
+
+    #[test]
+    fn arch_from_non_deb_returns_none() {
+        assert_eq!(
+            extract_architecture_from_deb_filename("tool-1.0.0.rpm"),
+            None
+        );
+    }
+
+    #[test]
+    fn arch_from_deb_missing_arch_segment_returns_none() {
+        // Only two segments: name_version.deb — no architecture
+        assert_eq!(
+            extract_architecture_from_deb_filename("tool_1.0.0.deb"),
+            None
+        );
     }
 
     // ── extract_version_from_package: unsupported extension ───────────────

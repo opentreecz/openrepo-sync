@@ -27,17 +27,17 @@ An HTML report is published here automatically on every successful CI run.
 
 | File | Tests | Description |
 |---|---|---|
-| `src/config.rs` | 29 | Config deserialization, env-var expansion, schedule parsing |
+| `src/config.rs` | 34 | Config deserialization, package_filter parsing, env-var expansion, schedule parsing |
 | `src/models.rs` | 12 | PackageVersion parsing, ordering, Display |
 | `src/repo_client.rs` | 23 | HTTP client: list/upload/delete/whoami, pagination, polling, OpenRepo package field parsing |
 | `src/sources/deb_repo.rs` | 37 | Packages parsing, per-group retention, architecture filtering, GPG verification, multi-suite, flat layout |
 | `src/sources/direct_url.rs` | 14 | Static URL version, LATEST download, filename resolution |
-| `src/sources/github.rs` | 20 | Asset collection, arch_filter, pagination, draft/prerelease |
+| `src/sources/github.rs` | 26 | Asset collection, package_filter, arch_filter, pagination, draft/prerelease |
 | `src/sources/sourceforge.rs` | 12 | HTML scraping, filename filter, folder URL |
 | `src/sync.rs` | 18 | Full sync cycle: upload, skip, conflict, scoped prune, dry-run |
-| `src/version.rs` | 11 | Filename version extraction, dpkg-deb integration |
+| `src/version.rs` | 21 | Filename version/package extraction, dpkg-deb integration |
 | `src/main.rs` | 12 | CLI parsing, project filter, integration against mock |
-| **Test suite** | **204 tests passed** | Latest local `cargo test` run after the retention and architecture regression additions |
+| **Test suite** | **235 tests passed** | Latest local `cargo test` run after the GitHub package filtering additions |
 
 ---
 
@@ -53,13 +53,13 @@ available at [/coverage-report/tarpaulin-report.html](../coverage-report/tarpaul
 | Module | What is tested |
 |---|---|
 | `models` | `PackageVersion::parse` — semver, `v`-prefix, pre-release, raw fallback; ordering; Display |
-| `config` | All source type deserialisations, GitHub arch_filter defaults/overrides, env-var expansion, load/load_all filesystem paths |
+| `config` | All source type deserialisations, GitHub arch_filter and package_filter defaults/overrides, env-var expansion, load/load_all filesystem paths |
 | `repo_client` | All HTTP methods via mock server: list/upload/delete/whoami, pagination, auth header, error handling |
-| `sources::github` | Asset collection, arch_filter priority (amd64/x86_64/arm64/aarch64 aliases), pagination, draft/prerelease skipping, mock API |
-| `sources::sourceforge` | HTML scraping, filename filter, folder URL, mock HTTP server |
+| `sources::github` | Asset collection, package_filter, arch_filter priority (amd64/x86_64/arm64/aarch64 aliases), pagination, draft/prerelease skipping, mock API |
+| `sources::sourceforge` | HTML scraping, filename/package filter, folder URL, mock HTTP server |
 | `sources::direct_url` | Static URL version parsing, LATEST URL download+version extraction, filename utilities |
 | `sync` | Full sync cycle via mock server: upload, skip, conflict, scoped prune, dry-run, error propagation |
-| `version` | `extract_version_from_filename` — all naming patterns; real `.deb` packaging integration test |
+| `version` | Filename version/package extraction, architecture extraction from `.deb` names, real `.deb` packaging integration test |
 | `main` | CLI argument parsing, flag defaults, project filter, run integration against mock server |
 
 ---

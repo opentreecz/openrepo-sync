@@ -222,12 +222,14 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             asset_filter,
             prerelease,
             arch_filter,
+            package_filter,
         } => Ok(AnySource::Github(GithubSource::new(
             owner,
             repo,
             asset_filter.as_deref(),
             *prerelease,
             arch_filter.clone(),
+            package_filter.clone(),
             http_client.clone(),
         )?)),
         SourceConfig::DirectUrl { url, sha256 } => Ok(AnySource::DirectUrl(DirectUrlSource::new(
@@ -243,10 +245,12 @@ fn build_source(config: &SourceConfig, http_client: &reqwest::Client) -> Result<
             project: sf_project,
             folder,
             filename_filter,
+            package_filter,
         } => Ok(AnySource::Sourceforge(SourceforgeSource::new(
             sf_project,
             folder.as_deref(),
             filename_filter.as_deref(),
+            package_filter.clone(),
             http_client.clone(),
         )?)),
         SourceConfig::DebRepo {

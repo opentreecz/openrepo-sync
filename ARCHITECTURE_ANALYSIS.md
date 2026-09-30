@@ -119,10 +119,10 @@ Dual check on filename AND version:
 
 | Variant | Tag | Key Fields |
 |---------|-----|------------|
-| `Github` | `github` | owner, repo, asset_filter, prerelease, arch_filter |
+| `Github` | `github` | owner, repo, asset_filter, prerelease, arch_filter, package_filter |
 | `DirectUrl` | `direct_url` | url, sha256 |
 | `DirectUrlLatest` | `direct_url_latest` | url, sha256 |
-| `Sourceforge` | `sourceforge` | project, folder, filename_filter |
+| `Sourceforge` | `sourceforge` | project, folder, filename_filter, package_filter |
 | `DebRepo` | `deb_repo` | url, layout, suites, components, architectures, package_filter, filename_filter, verify_gpg, gpg_key |
 | `RpmRepo` | `rpm_repo` | url, package_filter, filename_filter, verify_gpg, gpg_key, architectures |
 
@@ -180,14 +180,14 @@ pub trait PackageSource {
 | Module | Tests | Coverage |
 |--------|-------|----------|
 | `main.rs` | 10 | CLI parsing, integration over MockServer |
-| `config.rs` | 20 | All source types, defaults, env vars |
+| `config.rs` | 31 | All source types, defaults, env vars |
 | `models.rs` | 10 | Version parsing, ordering |
-| `version.rs` | 10 | Filename extraction, dpkg/rpm |
+| `version.rs` | 21 | Filename/package extraction, dpkg/rpm |
 | `repo_client.rs` | 18 | All API methods, error paths, pagination |
 | `sync.rs` | 17 | Dry-run, pruning, conflicts, downloads |
-| `github.rs` | 17 | Releases, arch_filter, pagination |
+| `github.rs` | 26 | Releases, package_filter, arch_filter, pagination |
 | `direct_url.rs` | 10 | URL parsing, downloads |
-| `sourceforge.rs` | 10 | HTML parsing, filtering |
+| `sourceforge.rs` | 12 | HTML parsing, filtering |
 | `deb_repo.rs` | 25+ | Parsing, filters, GPG verification |
 | `rpm_repo.rs` | 12 | XML/SQLite parsing, filtering |
 

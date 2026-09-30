@@ -1,0 +1,15 @@
+---
+name: rp-bookshelf
+repo_uid: deb
+keep_versions: 5
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://archive.raspberrypi.org/debian
+  suites: trixie
+  components: main
+  architectures: amd64
+  package_filter: rp-bookshelf
+  verify_gpg: true
+  gpg_key: https://archive.raspberrypi.org/debian/raspberrypi.gpg.key

@@ -19,6 +19,7 @@
 name: code
 repo_uid: deb
 keep_versions: 1
+on_conflict: skip
 
 source:
   type: direct_url_latest

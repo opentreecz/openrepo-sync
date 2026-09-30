@@ -1,0 +1,13 @@
+---
+name: obsidian
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: github
+  owner: obsidianmd
+  repo: obsidian-releases
+  asset_filter: "*.deb"
+  arch_filter: amd64
+  prerelease: false

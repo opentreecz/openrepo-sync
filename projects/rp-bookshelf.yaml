@@ -1,7 +1,7 @@
 ---
 name: rp-bookshelf
 repo_uid: deb
-keep_versions: 5
+keep_versions: 2
 on_conflict: skip
 
 source:

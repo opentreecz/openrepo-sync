@@ -1,7 +1,7 @@
 ---
 name: signal-desktop
 repo_uid: deb
-keep_versions: 3
+keep_versions: 2
 on_conflict: skip
 
 source:

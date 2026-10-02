@@ -11,7 +11,7 @@
 ---
 name: rambox                 # identifier used in log output and --project NAME
 repo_uid: deb    # target repository UID in OpenRepo
-keep_versions: 1           # keep the 3 newest versions; older ones are pruned
+keep_versions: 2           # keep the 3 newest versions; older ones are pruned
 on_conflict: skip
 
 source:

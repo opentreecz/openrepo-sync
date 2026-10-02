@@ -1,7 +1,7 @@
 ---
 name: google-earth-ec
 repo_uid: deb
-keep_versions: 5
+keep_versions: 1
 on_conflict: skip
 
 source:

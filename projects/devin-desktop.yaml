@@ -1,0 +1,14 @@
+---
+name: devin-desktop
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/apt
+  suites: stable
+  components: main
+  package_filter: devin-desktop
+  verify_gpg: true
+  gpg_key: https://windsurf-stable.codeiumdata.com/wVxQEIWkwPUEAGf3/windsurf.gpg

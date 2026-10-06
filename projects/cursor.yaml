@@ -1,0 +1,9 @@
+---
+name: cursor
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: direct_url_latest
+  url: "https://api2.cursor.sh/updates/download/golden/linux-x64-deb/cursor/latest"

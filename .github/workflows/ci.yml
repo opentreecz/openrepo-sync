@@ -147,3 +147,29 @@ jobs:
 
       - name: cargo check
         run: cargo check --all-targets
+
+  schema-contract:
+    name: OpenAPI Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: contract-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: contract-
+
+      - name: Download server OpenAPI schema
+        run: |
+          curl -fsSL \
+            https://raw.githubusercontent.com/opentreecz/openrepo/main/schema/openapi.yaml \
+            -o openapi.yaml
+
+      - name: Run OpenAPI contract tests
+        run: cargo test --test openapi_contract -- --nocapture

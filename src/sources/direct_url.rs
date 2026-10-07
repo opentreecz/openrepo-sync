@@ -1,14 +1,17 @@
 use anyhow::{Context, Result};
+use futures::StreamExt;
 use regex::Regex;
 use std::path::Path;
 use std::sync::LazyLock;
+use tokio::io::AsyncWriteExt;
 use tracing::debug;
 
 use crate::arch::{filename_matches_filter_or_unknown, package_arch_matches_filter};
 use crate::models::{PackageVersion, RemotePackage};
 use crate::version::{
     extract_architecture_from_deb_filename, extract_architecture_from_package,
-    extract_version_from_filename, extract_version_from_package,
+    extract_package_name_from_filename, extract_version_from_filename,
+    extract_version_from_package,
 };
 
 pub struct DirectUrlSource {
@@ -62,7 +65,7 @@ impl DirectUrlSource {
         }])
     }
 
-    /// For LATEST URLs: download to a temp file, extract version via dpkg/rpm,
+    /// For LATEST URLs: stream to a temp file, extract version via dpkg/rpm,
     /// then persist the file alongside the temp dir so sync.rs can use it.
     pub async fn fetch_latest_url(&self) -> Result<Vec<RemotePackage>> {
         debug!("Downloading LATEST package from {}", self.url);
@@ -83,17 +86,35 @@ impl DirectUrlSource {
             .unwrap_or("bin")
             .to_string();
 
-        // Write to a tempfile for version detection
+        // Write to a tempfile for version detection.
+        // Stream directly to disk — avoids loading the full package (potentially
+        // hundreds of MB) into memory before writing.
         let tmp = tempfile::Builder::new()
             .suffix(&format!(".{}", ext))
             .tempfile()
             .context("Failed to create temp file")?;
         let tmp_path = tmp.path().to_path_buf();
 
-        let bytes = resp.bytes().await.context("Failed to read download body")?;
-        tokio::fs::write(&tmp_path, &bytes)
-            .await
-            .context("Failed to write temp file")?;
+        {
+            let mut tmp_file = tokio::fs::OpenOptions::new()
+                .write(true)
+                .open(&tmp_path)
+                .await
+                .context("Failed to open temp file for writing")?;
+            let mut stream = resp.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.context("Failed to read download stream")?;
+                tmp_file
+                    .write_all(&chunk)
+                    .await
+                    .context("Failed to write chunk to temp file")?;
+            }
+            tmp_file
+                .flush()
+                .await
+                .context("Failed to flush temp file")?;
+            // tmp_file closed here; dpkg-deb / rpm can now read the complete file
+        }
 
         let version = extract_version_from_package(&tmp_path)
             .with_context(|| format!("Version extraction failed for {}", original_filename))?;
@@ -104,7 +125,18 @@ impl DirectUrlSource {
             return Ok(Vec::new());
         }
 
-        let versioned_filename = rename_with_version(&original_filename, &version);
+        // Build a canonical package filename from the metadata we just read.
+        // If the URL filename already contained "LATEST"/"latest" (e.g.
+        // `minikube_latest_amd64.deb`), replace that placeholder with the
+        // real version.  Otherwise generate standard `{name}_{ver}_{arch}.deb`
+        // (or `{name}-{ver}.{arch}.rpm`) naming from the package metadata —
+        // avoids doubled-version filenames when the redirect URL already
+        // embeds the version (e.g. `cursor_3.23.23_amd64.deb` from Cursor).
+        let versioned_filename = if original_filename.to_uppercase().contains("LATEST") {
+            rename_with_version(&original_filename, &version)
+        } else {
+            canonical_package_filename(&original_filename, &version, &architecture)
+        };
 
         // Persist the temp file to a stable path in the same temp directory.
         // This prevents RAII deletion while keeping the disk clean after sync.
@@ -173,6 +205,42 @@ fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> String {
 
     // Fall back to original URL
     url_filename(original_url)
+}
+
+/// Build a canonical package filename from package metadata extracted at download time.
+///
+/// For `.deb` files uses the Debian convention: `{name}_{version}_{arch}.deb`.
+/// For `.rpm` files uses the RPM convention: `{name}-{version}.{arch}.rpm`.
+/// Falls back to [`rename_with_version`] for other file types.
+///
+/// The package name is derived from the original URL filename; if it cannot be
+/// extracted the file stem is used as a fallback.
+pub(crate) fn canonical_package_filename(
+    original: &str,
+    version: &PackageVersion,
+    architecture: &str,
+) -> String {
+    let ext = Path::new(original)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin");
+
+    let pkg_name = || -> String {
+        extract_package_name_from_filename(original)
+            .or_else(|| {
+                Path::new(original)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_else(|| "package".to_string())
+    };
+
+    match ext {
+        "deb" => format!("{}_{}_{}.deb", pkg_name(), version, architecture),
+        "rpm" => format!("{}-{}.{}.rpm", pkg_name(), version, architecture),
+        _ => rename_with_version(original, version),
+    }
 }
 
 pub(crate) fn rename_with_version(filename: &str, version: &PackageVersion) -> String {
@@ -267,6 +335,57 @@ mod tests {
         );
     }
 
+    // ── canonical_package_filename ─────────────────────────────────────────
+
+    #[test]
+    fn canonical_deb_standard_naming() {
+        // Redirect URL already contains version — no doubling.
+        let ver = PackageVersion::parse("3.23.23-1791166813");
+        assert_eq!(
+            canonical_package_filename("cursor_3.23.23_amd64.deb", &ver, "amd64"),
+            "cursor_3.23.23-1791166813_amd64.deb"
+        );
+    }
+
+    #[test]
+    fn canonical_deb_dash_name() {
+        // Package name extracted via VERSION_RE fallback (no underscore).
+        let ver = PackageVersion::parse("1.0.161");
+        assert_eq!(
+            canonical_package_filename("discord-1.0.161.deb", &ver, "amd64"),
+            "discord_1.0.161_amd64.deb"
+        );
+    }
+
+    #[test]
+    fn canonical_deb_no_version_in_name() {
+        // Filename has no version segment — stem used as package name.
+        let ver = PackageVersion::parse("3.1.0");
+        assert_eq!(
+            canonical_package_filename("mytool.deb", &ver, "all"),
+            "mytool_3.1.0_all.deb"
+        );
+    }
+
+    #[test]
+    fn canonical_rpm_naming() {
+        let ver = PackageVersion::parse("1.24.0");
+        assert_eq!(
+            canonical_package_filename("nginx-1.24.0.rpm", &ver, "x86_64"),
+            "nginx-1.24.0.x86_64.rpm"
+        );
+    }
+
+    #[test]
+    fn canonical_unknown_ext_falls_back_to_rename() {
+        // Non deb/rpm: falls back to rename_with_version (appends version).
+        let ver = PackageVersion::parse("1.0.0");
+        assert_eq!(
+            canonical_package_filename("tool-LATEST.AppImage", &ver, "x86_64"),
+            "tool-1.0.0.AppImage"
+        );
+    }
+
     // ── fetch_static_url: version parsed from URL filename ─────────────────
 
     #[tokio::test]
@@ -334,8 +453,8 @@ mod tests {
 
         assert_eq!(pkgs.len(), 1);
         assert_eq!(pkgs[0].version, PackageVersion::parse("2.5.0"));
-        // LATEST in the Content-Disposition filename is replaced by the
-        // version read out of the package itself.
+        // LATEST in the Content-Disposition filename is replaced by the version
+        // read from the package itself; the path is canonical deb naming.
         assert_eq!(pkgs[0].filename, "testpkg-2.5.0.deb");
 
         // The package is persisted for sync.rs to pick up via file://.
@@ -356,8 +475,10 @@ mod tests {
 
         let server = MockServer::start(vec![MockResponse::bytes(200, deb_bytes, &[])]);
 
-        // No Content-Disposition: the filename comes from the URL, which has
-        // an extension, and gets the detected version appended.
+        // No Content-Disposition: filename comes from the URL path.
+        // No "LATEST" in the name, so canonical_package_filename is used:
+        // {pkg}_{version}_{arch}.deb  →  mytool_3.1.0_all.deb
+        // (the minimal test deb has Architecture: all).
         let source = DirectUrlSource::new(
             &format!("{}/mytool.deb", server.url),
             true,
@@ -369,7 +490,7 @@ mod tests {
         let pkgs = source.fetch_latest(1).await.unwrap();
 
         assert_eq!(pkgs[0].version, PackageVersion::parse("3.1.0"));
-        assert_eq!(pkgs[0].filename, "mytool_3.1.0.deb");
+        assert_eq!(pkgs[0].filename, "mytool_3.1.0_all.deb");
 
         let path = pkgs[0].download_url.strip_prefix("file://").unwrap();
         assert!(std::path::Path::new(path).exists());

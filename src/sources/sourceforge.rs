@@ -96,10 +96,10 @@ impl SourceforgeSource {
                 if filename.is_empty() {
                     continue;
                 }
-                if let Some(pattern) = &self.filename_filter {
-                    if !pattern.matches(&filename) {
-                        continue;
-                    }
+                if let Some(pattern) = &self.filename_filter
+                    && !pattern.matches(&filename)
+                {
+                    continue;
                 }
                 // Apply package_filter (exact name match, same as deb_repo).
                 if !self.package_filter.is_empty() {

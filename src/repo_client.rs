@@ -214,10 +214,10 @@ impl RepoClient {
             }
             let body = resp.text().await.unwrap_or_default();
             // Try to parse a structured error envelope from the body.
-            if let Ok(api_err) = serde_json::from_str::<ApiError>(&body) {
-                if api_err.code == code::PACKAGE_EXISTS {
-                    return Err(UploadError::PackageExists);
-                }
+            if let Ok(api_err) = serde_json::from_str::<ApiError>(&body)
+                && api_err.code == code::PACKAGE_EXISTS
+            {
+                return Err(UploadError::PackageExists);
             }
             return Err(UploadError::Other(anyhow!(
                 "Upload failed ({}): {}",

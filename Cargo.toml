@@ -3,7 +3,7 @@ name = "openrepo"
 version = "0.1.72"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.88"
 
 [[bin]]
 name = "openrepo-sync"

@@ -6,7 +6,7 @@ openrepo-sync is a Rust CLI tool that automatically synchronizes packages from
 upstream sources into an OpenRepo server via its REST API. It is the companion
 client to the OpenRepo server (Django/Vue.js).
 
-- **Language:** Rust (edition 2024, MSRV 1.85)
+- **Language:** Rust (edition 2024, MSRV 1.88)
 - **Async runtime:** Tokio
 - **HTTP client:** reqwest (rustls-tls)
 - **CLI:** clap v4 (derive)

@@ -95,8 +95,8 @@ fn required_endpoint_paths_exist() {
 fn upload_response_has_task_id() {
     let Some(spec) = load_spec() else { return };
 
-    let schema = &spec["paths"]["/api/{repo_uid}/upload/"]["post"]["responses"]["202"]
-        ["content"]["application/json"]["schema"];
+    let schema = &spec["paths"]["/api/{repo_uid}/upload/"]["post"]["responses"]["202"]["content"]["application/json"]
+        ["schema"];
 
     assert_has_property(
         &spec,
@@ -112,15 +112,17 @@ fn upload_response_has_task_id() {
 fn upload_task_has_status_and_error_fields() {
     let Some(spec) = load_spec() else { return };
 
-    let schema = &spec["paths"]["/api/upload-status/{task_id}/"]["get"]["responses"]["200"]
-        ["content"]["application/json"]["schema"];
+    let schema = &spec["paths"]["/api/upload-status/{task_id}/"]["get"]["responses"]["200"]["content"]
+        ["application/json"]["schema"];
 
     for field in ["status", "error_message", "error_code"] {
         assert_has_property(
             &spec,
             schema,
             field,
-            &format!("UploadStatusResponse (GET /api/upload-status/{{task_id}}/ → 200) field '{field}'"),
+            &format!(
+                "UploadStatusResponse (GET /api/upload-status/{{task_id}}/ → 200) field '{field}'"
+            ),
         );
     }
 }
@@ -134,8 +136,8 @@ fn upload_task_has_status_and_error_fields() {
 fn packages_response_envelope_and_item_fields() {
     let Some(spec) = load_spec() else { return };
 
-    let envelope_node = &spec["paths"]["/api/{repo_uid}/packages/"]["get"]["responses"]["200"]
-        ["content"]["application/json"]["schema"];
+    let envelope_node = &spec["paths"]["/api/{repo_uid}/packages/"]["get"]["responses"]["200"]["content"]
+        ["application/json"]["schema"];
     let envelope = deref(&spec, envelope_node);
 
     // PaginatedResponse outer fields
@@ -148,7 +150,13 @@ fn packages_response_envelope_and_item_fields() {
 
     // ApiPackage inner fields (items inside results)
     let items_node = &envelope["properties"]["results"]["items"];
-    for field in ["package_uid", "package_name", "filename", "architecture", "version"] {
+    for field in [
+        "package_uid",
+        "package_name",
+        "filename",
+        "architecture",
+        "version",
+    ] {
         assert_has_property(
             &spec,
             items_node,
@@ -164,9 +172,8 @@ fn packages_response_envelope_and_item_fields() {
 fn whoami_response_has_username() {
     let Some(spec) = load_spec() else { return };
 
-    let schema =
-        &spec["paths"]["/api/whoami"]["get"]["responses"]["200"]["content"]["application/json"]
-            ["schema"];
+    let schema = &spec["paths"]["/api/whoami"]["get"]["responses"]["200"]["content"]["application/json"]
+        ["schema"];
 
     assert_has_property(
         &spec,

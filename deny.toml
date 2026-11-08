@@ -19,7 +19,20 @@ multiple-versions = "warn"
 wildcards = "allow"
 
 [advisories]
-ignore = []
+ignore = [
+    # unsafe-libyaml is unmaintained (archived upstream 2024-03-25). It's a
+    # transitive dep of serde_yaml, which we use for config files. No safe
+    # upgrade exists — even serde_yaml's maintained forks (e.g. serde_yaml_ng)
+    # still depend on it. Revisit if/when a safe-Rust YAML parser (saphyr,
+    # serde-saphyr) is adopted.
+    "RUSTSEC-2024-0449",
+    # tokio::io::unix::AsyncFd exposes safe constructors that can violate I/O
+    # safety if misused with arbitrary/duplicated file descriptors. We don't
+    # use AsyncFd directly (it's only reachable via tokio's internals through
+    # reqwest); the unsafe `register`/`register_with_interest` replacements
+    # tokio added are opt-in API surface we never touch.
+    "RUSTSEC-2026-0386",
+]
 
 [sources]
 unknown-registry = "warn"

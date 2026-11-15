@@ -19,22 +19,7 @@ jobs:
       packages: write
 
     steps:
-      # Pin to the commit that the triggering Release run actually built.
-      # Without this, checkout defaults to main's *current* tip — if another
-      # push lands on main between that Release run finishing and this job
-      # starting (e.g. two pushes made moments apart), Cargo.toml's version
-      # no longer matches the artifacts we're about to download, and the
-      # later COPY step 404s looking for a .deb that was never built.
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-
-      - name: Read version from Cargo.toml
-        id: version
-        run: |
-          VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
 
       # ── Resolve which Release run to pull artifacts from ────────────────────
       # On workflow_run the triggering run's ID is used directly; on manual
@@ -101,6 +86,28 @@ jobs:
       - name: List build context
         if: steps.source.outputs.skip != 'true'
         run: ls -lh docker-context/
+
+      # Derive the version from the downloaded .deb filename itself, rather
+      # than re-reading Cargo.toml off a checkout. The Release job bumps
+      # Cargo.toml to the *next* version as its own trailing commit, and
+      # github.event.workflow_run.head_sha can end up pointing past that
+      # bump by the time this job runs (the webhook payload isn't pinned to
+      # the exact commit the Release run itself built) -- so reading the
+      # repo's current Cargo.toml here raced ahead and looked for artifacts
+      # one version too new. The artifact filename is proof of what was
+      # actually built, so it can't drift from what we're packaging.
+      - name: Determine version from downloaded packages
+        if: steps.source.outputs.skip != 'true'
+        id: version
+        run: |
+          DEB=$(ls docker-context/*_amd64.deb | head -1)
+          VERSION=$(basename "$DEB" | sed -E 's/^openrepo-sync_([0-9]+\.[0-9]+\.[0-9]+)_amd64\.deb$/\1/')
+          if [ -z "$VERSION" ] || [ "$VERSION" = "$(basename "$DEB")" ]; then
+            echo "Could not parse version from downloaded artifact: $DEB" >&2
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION"    >> "$GITHUB_OUTPUT"
 
       # ── Multi-platform builder ───────────────────────────────────────────────
       - name: Set up QEMU

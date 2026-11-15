@@ -26,12 +26,9 @@ ignore = [
     # still depend on it. Revisit if/when a safe-Rust YAML parser (saphyr,
     # serde-saphyr) is adopted.
     "RUSTSEC-2024-0449",
-    # tokio::io::unix::AsyncFd exposes safe constructors that can violate I/O
-    # safety if misused with arbitrary/duplicated file descriptors. We don't
-    # use AsyncFd directly (it's only reachable via tokio's internals through
-    # reqwest); the unsafe `register`/`register_with_interest` replacements
-    # tokio added are opt-in API surface we never touch.
-    "RUSTSEC-2026-0386",
+    # RUSTSEC-2026-0386 (tokio AsyncFd I/O-safety advisory) previously ignored
+    # here no longer matches anything as of tokio 1.54.1 — removed rather than
+    # left as a dangling, cargo-deny-warns-about-it entry.
 ]
 
 [sources]

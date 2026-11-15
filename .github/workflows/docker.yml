@@ -19,7 +19,15 @@ jobs:
       packages: write
 
     steps:
+      # Pin to the commit that the triggering Release run actually built.
+      # Without this, checkout defaults to main's *current* tip — if another
+      # push lands on main between that Release run finishing and this job
+      # starting (e.g. two pushes made moments apart), Cargo.toml's version
+      # no longer matches the artifacts we're about to download, and the
+      # later COPY step 404s looking for a .deb that was never built.
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Read version from Cargo.toml
         id: version

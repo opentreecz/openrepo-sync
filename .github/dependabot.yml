@@ -20,3 +20,12 @@ updates:
       github-actions:
         patterns:
           - "*"
+    ignore:
+      # dtolnay/rust-toolchain is pinned by *Rust toolchain version*
+      # (e.g. @1.89.0), not by the action's own release tag. Dependabot
+      # doesn't know that distinction and tries to "update" it to the
+      # newest matching ref it can find, which has twice now produced a
+      # nonexistent Rust version (@1.120.0) that 404s on download. The
+      # MSRV pin here is a deliberate project decision (see CLAUDE.md /
+      # Cargo.toml rust-version) and should only change by hand.
+      - dependency-name: "dtolnay/rust-toolchain"

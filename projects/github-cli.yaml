@@ -1,0 +1,14 @@
+---
+name: github-cli
+repo_uid: deb
+keep_versions: 3
+on_conflict: skip
+
+source:
+  type: deb_repo
+  url: https://cli.github.com/packages
+  suites: stable
+  components: main
+  package_filter: gh
+  verify_gpg: true
+  gpg_key: https://cli.github.com/packages/githubcli-archive-keyring.gpg

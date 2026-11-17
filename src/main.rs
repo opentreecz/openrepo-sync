@@ -187,17 +187,17 @@ async fn run(cli: &Cli) -> Result<bool> {
         .await;
         for action in &result.actions {
             match action {
-                models::SyncAction::UpToDate => {
-                    info!("[{}] Up to date", result.project_name)
-                }
-                models::SyncAction::Uploaded { version } => {
-                    info!("[{}] Uploaded version {}", result.project_name, version)
-                }
+                // "Up to date" and "Skipping …" are already logged at INFO by
+                // sync.rs as they happen; only repeat them at DEBUG here.
+                models::SyncAction::UpToDate => {}
                 models::SyncAction::Skipped { version } => {
-                    info!(
+                    debug!(
                         "[{}] Skipped version {} (already exists)",
                         result.project_name, version
                     )
+                }
+                models::SyncAction::Uploaded { version } => {
+                    info!("[{}] Uploaded version {}", result.project_name, version)
                 }
                 models::SyncAction::Pruned { removed_count } => {
                     info!(

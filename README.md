@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="420">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/openrepo-sync-logo-dark.svg">
+    <img src="docs/assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="420">
+  </picture>
 </p>
 
 [![CI](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml)

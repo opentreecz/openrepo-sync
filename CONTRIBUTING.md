@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="360">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/openrepo-sync-logo-dark.svg">
+    <img src="docs/assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="360">
+  </picture>
 </p>
 
 # Contributing to openrepo-sync

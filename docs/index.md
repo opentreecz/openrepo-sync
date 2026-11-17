@@ -5,7 +5,7 @@ title: openrepo-sync
 
 <p align="center">
   <a href="https://github.com/opentreecz">
-    <img src="assets/logo.png" alt="OpenTree" width="128" height="128">
+    <img src="assets/logo.png" alt="OpenRepoSync" width="128" height="128">
   </a>
 </p>
 

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   version="1.1"
+   width="680"
+   height="160"
+   viewBox="0 0 680 160"
+   xmlns="http://www.w3.org/2000/svg">
+  <g>
+    <!-- badge -->
+    <rect x="10" y="20" width="120" height="120" rx="28" fill="#f57f17" />
+    <!-- sync glyph: two opposing arcs with arrowheads -->
+    <path d="M 78.89,55.57 A 26,26 0 0 1 78.89,104.43"
+          fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" />
+    <path d="M 61.11,104.43 A 26,26 0 0 1 61.11,55.57"
+          fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" />
+    <path d="M 78.89,104.43 L 88.5,98.2 L 90.5,109.6 Z" fill="#ffffff" />
+    <path d="M 61.11,55.57 L 51.5,61.8 L 49.5,50.4 Z" fill="#ffffff" />
+    <!-- wordmark -->
+    <text
+       x="155"
+       y="104"
+       style="font-family:Arial, Helvetica, sans-serif;font-weight:700;font-size:72px;letter-spacing:-1px">
+      <tspan fill="#24292f">Open</tspan><tspan fill="#f57f17">Repo</tspan><tspan fill="#24292f">Sync</tspan>
+    </text>
+  </g>
+</svg>

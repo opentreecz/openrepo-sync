@@ -1,10 +1,6 @@
 <p align="center">
-  <a href="https://github.com/opentreecz">
-    <img src="docs/assets/logo.png" alt="OpenTree" width="128" height="128">
-  </a>
+  <img src="docs/assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="420">
 </p>
-
-<h1 align="center">openrepo-sync</h1>
 
 [![CI](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/opentreecz/openrepo-sync/actions/workflows/ci.yml)
 [![Release](https://github.com/opentreecz/openrepo-sync/actions/workflows/release.yml/badge.svg)](https://github.com/opentreecz/openrepo-sync/actions/workflows/release.yml)

@@ -23,6 +23,33 @@ Configuration is split into two layers:
 
 ## Global Config (`config.yaml`)
 
+### Environment variables
+
+Copy [`.env.example`](https://github.com/opentreecz/openrepo-sync/blob/main/.env.example)
+to `.env` for Docker Compose, or export variables in your shell for native runs.
+The CLI itself does not automatically load `.env`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `OPENREPO_API_KEY` | unset | Token expanded through `${OPENREPO_API_KEY}` in the supplied YAML template |
+| `RUST_LOG` | `info` (`debug` with `--verbose`) | Tracing filter, e.g. `openrepo_sync=debug,reqwest=warn` |
+| `TMPDIR` | system temporary directory | Standard Unix temp-directory override; downloads default to its `openrepo-sync` subdirectory when `download_dir` is omitted |
+
+The supplied Compose service forwards only `OPENREPO_API_KEY`. To configure
+logging from `.env`, add this entry alongside the API key under the service's
+`environment`, then recreate the container with `docker compose up -d`:
+
+```yaml
+      - RUST_LOG=${RUST_LOG:-info}
+```
+
+API URL, schedule, architecture, and source options remain YAML settings.
+Both global and project YAML support arbitrary `${VARIABLE_NAME}` substitutions;
+custom variables also need to be exported or forwarded into the container.
+OpenRepo's database and Redis settings belong to the **server**, not this client.
+
+### Global YAML example
+
 > The `api_url` and `api_key` connect to your [OpenRepo](https://github.com/opentreecz/openrepo) server instance. See the [OpenRepo getting started guide](https://opentreecz.github.io/openrepo/getting-started/) for server setup instructions.
 
 ```yaml

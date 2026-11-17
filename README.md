@@ -269,6 +269,17 @@ See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker
 
 See the [Docker documentation](https://opentreecz.github.io/openrepo-sync/docker/) for the full walkthrough including scheduled Docker Compose mode.
 
+The [`.env.example`](.env.example) template documents the API token, `RUST_LOG`,
+and Unix `TMPDIR` settings. Compose forwards only the API token by default;
+additional variables need an entry in the service's `environment`. Native CLI
+runs require exported variables and do not automatically read `.env`. See the
+[environment configuration guide](docs/configuration.md#environment-variables).
+
+If uploads return HTTP 500 while repository listing works, inspect the OpenRepo
+server's Django logs. The response alone cannot distinguish storage, database,
+or Celery/Redis failures. See the server's
+[upload troubleshooting guide](https://opentreecz.github.io/openrepo/getting-started/#uploads-return-http-500-while-package-listing-works).
+
 ---
 
 ## Usage

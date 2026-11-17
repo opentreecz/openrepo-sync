@@ -5,6 +5,12 @@ on:
     branches:
       - main
 
+# Serialize release runs: back-to-back pushes (e.g. several Dependabot merges)
+# must not race each other when pushing the version-bump commit.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
   # ── 1. Check whether this push should trigger a release ────────────────────
   # Skip if it is the version-bump commit itself (avoids an infinite loop).
@@ -29,6 +35,17 @@ jobs:
         run: |
           # Skip if this push is itself the version-bump commit to avoid a loop.
           if git log -1 --pretty=%s | grep -q '^\[release\]'; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If newer commits already landed on main, let the run for the
+          # newest commit cut the release (it includes this commit too);
+          # pushing a bump from this older checkout would be rejected as
+          # non-fast-forward.
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
+            echo "main has moved past ${GITHUB_SHA::8}; the newer run will release it."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi

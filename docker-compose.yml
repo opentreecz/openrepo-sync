@@ -23,18 +23,28 @@
 
 services:
   openrepo-sync:
-    image: ghcr.io/opentreecz/openrepo-sync:latest
+    image: ${OPENREPO_SYNC_IMAGE:-ghcr.io/opentreecz/openrepo-sync:latest}
     build:
       context: .
       dockerfile: Dockerfile.build
     volumes:
       # Global configuration (API URL, API key, schedule settings)
-      - ./config.yaml:/config.yaml:ro,z
+      - ${OPENREPO_SYNC_CONFIG:-./config.yaml}:/config.yaml:ro,z
       # Per-project YAML files (one per upstream source)
-      - ./projects:/projects:ro,z
+      - ${OPENREPO_SYNC_PROJECTS_DIR:-./projects}:/projects:ro,z
+    # Every ${VAR:-default} below has a working default; override it in .env.
     environment:
       # API key for the OpenRepo server (passed to config.yaml via ${OPENREPO_API_KEY})
-      - OPENREPO_API_KEY=${OPENREPO_API_KEY}
+      OPENREPO_API_KEY: ${OPENREPO_API_KEY:-}
+      # Values substituted into config.yaml via ${VAR:-default}
+      OPENREPO_API_URL: ${OPENREPO_API_URL:-}
+      OPENREPO_SYNC_INTERVAL: ${OPENREPO_SYNC_INTERVAL:-}
+      OPENREPO_SYNC_SCHEDULE_ENABLED: ${OPENREPO_SYNC_SCHEDULE_ENABLED:-}
+      OPENREPO_SYNC_RUN_ON_START: ${OPENREPO_SYNC_RUN_ON_START:-}
+      OPENREPO_SYNC_ARCH: ${OPENREPO_SYNC_ARCH:-}
+      # Log filter (tracing EnvFilter syntax)
+      RUST_LOG: ${RUST_LOG:-info}
+      TZ: ${TZ:-UTC}
     # Run in scheduled mode — syncs at the interval defined in config.yaml
     command: ["--schedule", "--config", "/config.yaml", "--projects", "/projects"]
     restart: unless-stopped

@@ -37,6 +37,7 @@ pub struct ApiError {
 #[allow(dead_code)]
 pub mod code {
     pub const PACKAGE_EXISTS: &str = "PACKAGE_EXISTS";
+    pub const CHECKSUM_MISMATCH: &str = "CHECKSUM_MISMATCH";
     pub const REPO_NOT_FOUND: &str = "REPO_NOT_FOUND";
     pub const KEY_IN_USE: &str = "KEY_IN_USE";
     pub const VALIDATION_ERROR: &str = "VALIDATION_ERROR";

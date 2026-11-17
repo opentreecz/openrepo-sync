@@ -249,7 +249,7 @@ Fernet encryption for `private_key_pem` and `passphrase` fields.
 
 DRF throttling: 100 req/min user, 20 req/min upload.
 
-### 4.6 Hash Continuity (Both)
+### ✅ 4.6 Hash Continuity (Both)
 
 Client sends SHA-256 with upload; server verifies on receipt.
 
@@ -301,7 +301,7 @@ Phase 4 (Weeks 7-9): Observability & Hardening
   ├── 4.3 Prometheus metrics (server)
   ├── ✅ 4.4 PGP key encryption (server)
   ├── ✅ 4.5 Rate limiting (server)
-  ├── 4.6 Hash continuity (both)
+  ├── ✅ 4.6 Hash continuity (both)
   ├── ✅ 4.7 Retention logic fix (server)
   └── ✅ 4.8 Pagination fix (server)
 ```

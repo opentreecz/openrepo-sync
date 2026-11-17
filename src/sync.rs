@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::config::OnConflict;
 use crate::config::ProjectConfig;
@@ -41,7 +41,8 @@ pub async fn sync_project(
     {
         Ok(actions) => result.actions = actions,
         Err(e) => {
-            warn!("[{}] Error: {:#}", project.name, e);
+            // Reported once by the caller (main.rs) at ERROR level.
+            debug!("[{}] Error: {:#}", project.name, e);
             result.actions.push(SyncAction::Error(format!("{:#}", e)));
         }
     }

@@ -106,7 +106,7 @@ fn upload_response_has_task_id() {
     );
 }
 
-/// `UploadStatusResponse` in src/repo_client.rs: `{ status, error_message, error_code }`
+/// `UploadStatusResponse` in src/repo_client.rs: `{ status, error_message, error_code, sha256 }`
 /// Spec: GET /api/upload-status/{task_id}/ → 200 → $ref UploadTask
 #[test]
 fn upload_task_has_status_and_error_fields() {
@@ -115,7 +115,7 @@ fn upload_task_has_status_and_error_fields() {
     let schema = &spec["paths"]["/api/upload-status/{task_id}/"]["get"]["responses"]["200"]["content"]
         ["application/json"]["schema"];
 
-    for field in ["status", "error_message", "error_code"] {
+    for field in ["status", "error_message", "error_code", "sha256"] {
         assert_has_property(
             &spec,
             schema,

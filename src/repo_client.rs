@@ -4,12 +4,72 @@ use reqwest::{
     multipart::{Form, Part},
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use tracing::debug;
 
 use crate::errors::{ApiError, UploadError, code};
 use crate::models::{PackageVersion, RepoPackage};
 use crate::version::extract_version_from_filename;
+
+/// Maximum number of characters of a non-JSON error body included in error messages.
+const MAX_ERROR_BODY_CHARS: usize = 300;
+
+/// Turn an HTTP error response body into a concise, single-line description.
+///
+/// * Structured OpenRepo error envelopes become `CODE: detail`.
+/// * HTML pages (e.g. Django's generic "Server Error (500)" page or a proxy
+///   error page) are reduced to their `<title>`.
+/// * Anything else is whitespace-collapsed and truncated.
+fn summarize_error_body(body: &str) -> String {
+    if let Ok(api_err) = serde_json::from_str::<ApiError>(body) {
+        return format!("{}: {}", api_err.code, api_err.detail);
+    }
+    let trimmed = body.trim();
+    if trimmed.is_empty() {
+        return "<empty response body>".to_string();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("<!doctype html") || lower.starts_with("<html") {
+        if let (Some(start), Some(end)) = (lower.find("<title>"), lower.find("</title>")) {
+            let start = start + "<title>".len();
+            if start <= end {
+                let title = trimmed[start..end]
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if !title.is_empty() {
+                    return format!("HTML page: {title}");
+                }
+            }
+        }
+        return "HTML error page".to_string();
+    }
+    let collapsed = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.chars().count() > MAX_ERROR_BODY_CHARS {
+        let cut: String = collapsed.chars().take(MAX_ERROR_BODY_CHARS).collect();
+        format!("{cut}…")
+    } else {
+        collapsed
+    }
+}
+
+/// Extra guidance appended to 5xx upload failures.
+fn server_error_hint(status: StatusCode) -> &'static str {
+    if status.is_server_error() {
+        " (server-side failure — check the OpenRepo django/worker logs; \
+         uploads need a reachable Redis broker and a running Celery worker)"
+    } else {
+        ""
+    }
+}
+
+fn compute_sha256(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
 
 /// Maximum number of poll attempts when waiting for an async upload task to
 /// complete on the server.  Each attempt sleeps [`POLL_INTERVAL`].
@@ -42,6 +102,8 @@ struct UploadResponse {
 #[derive(Debug, Deserialize)]
 struct UploadStatusResponse {
     status: String,
+    #[serde(default)]
+    sha256: String,
     #[serde(default)]
     error_message: String,
     /// Machine-readable error code set by the server (Phase 1.3+).
@@ -189,8 +251,12 @@ impl RepoClient {
             .with_context(|| format!("Failed to read file for upload: {}", path.display()))
             .map_err(UploadError::Other)?;
 
+        let sha256 = compute_sha256(&bytes);
+
         let file_part = Part::bytes(bytes).file_name(filename.clone());
-        let mut form = Form::new().part("package_file", file_part);
+        let mut form = Form::new()
+            .part("package_file", file_part)
+            .text("sha256", sha256.clone());
         if overwrite {
             form = form.text("overwrite", "1");
         }
@@ -220,9 +286,10 @@ impl RepoClient {
                 return Err(UploadError::PackageExists);
             }
             return Err(UploadError::Other(anyhow!(
-                "Upload failed ({}): {}",
+                "Upload failed ({}): {}{}",
                 status,
-                body
+                summarize_error_body(&body),
+                server_error_hint(status)
             )));
         }
 
@@ -238,7 +305,7 @@ impl RepoClient {
                 "Upload accepted, task_id={} — polling for completion",
                 upload_resp.task_id
             );
-            self.poll_upload_status(&upload_resp.task_id, &filename)
+            self.poll_upload_status(&upload_resp.task_id, &filename, &sha256)
                 .await?;
         }
 
@@ -247,7 +314,12 @@ impl RepoClient {
 
     /// Poll `GET /api/upload-status/<task_id>/` until the task reaches
     /// `completed` or `failed`, or the maximum number of attempts is exceeded.
-    async fn poll_upload_status(&self, task_id: &str, filename: &str) -> Result<(), UploadError> {
+    async fn poll_upload_status(
+        &self,
+        task_id: &str,
+        filename: &str,
+        expected_sha256: &str,
+    ) -> Result<(), UploadError> {
         let status_url = format!("{}/api/upload-status/{}/", self.base_url, task_id);
 
         for attempt in 1..=UPLOAD_POLL_MAX_ATTEMPTS {
@@ -278,6 +350,15 @@ impl RepoClient {
 
             match task_status.status.as_str() {
                 "completed" => {
+                    let server_sha256 = task_status.sha256.trim().to_ascii_lowercase();
+                    if !server_sha256.is_empty() && server_sha256 != expected_sha256 {
+                        return Err(UploadError::Other(anyhow!(
+                            "Upload of '{}' failed SHA-256 verification on server: expected {}, server reported {}",
+                            filename,
+                            expected_sha256,
+                            server_sha256
+                        )));
+                    }
                     debug!(
                         "Upload task {} completed (poll attempt {})",
                         task_id, attempt
@@ -335,7 +416,11 @@ impl RepoClient {
         if !resp.status().is_success() {
             let status = resp.status();
             let body = resp.text().await.unwrap_or_default();
-            bail!("Delete failed ({}): {}", status, body);
+            bail!(
+                "Delete failed ({}): {}",
+                status,
+                summarize_error_body(&body)
+            );
         }
         Ok(())
     }
@@ -703,5 +788,116 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("failed"), "unexpected error: {msg}");
         assert!(msg.contains("disk full"), "unexpected error: {msg}");
+    }
+
+    #[tokio::test]
+    async fn upload_package_sends_sha256_field() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        let content = b"fake-package-bytes";
+        std::fs::write(&path, content).unwrap();
+        let expected_sha256 = compute_sha256(content);
+
+        let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
+        client.upload_package("r", &path, false).await.unwrap();
+
+        let requests = server.requests();
+        assert!(
+            requests[0].contains("name=\"sha256\""),
+            "expected multipart form field 'sha256' in request"
+        );
+        assert!(
+            requests[0].contains(&expected_sha256),
+            "expected sha256 digest {expected_sha256} in request body"
+        );
+    }
+
+    #[tokio::test]
+    async fn upload_poll_verifies_matching_sha256() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        let content = b"fake-package-bytes";
+        std::fs::write(&path, content).unwrap();
+        let expected_sha256 = compute_sha256(content);
+
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"sha-ok-task"}"#),
+            MockResponse::json(
+                200,
+                &format!(
+                    r#"{{"status":"completed","error_message":"","sha256":"{expected_sha256}"}}"#
+                ),
+            ),
+        ]);
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
+        client.upload_package("r", &path, false).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn upload_poll_fails_on_sha256_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        std::fs::write(&path, b"fake-package-bytes").unwrap();
+
+        let wrong_sha256 = "0".repeat(64);
+        let server = MockServer::start(vec![
+            MockResponse::json(202, r#"{"task_id":"sha-bad-task"}"#),
+            MockResponse::json(
+                200,
+                &format!(
+                    r#"{{"status":"completed","error_message":"","sha256":"{wrong_sha256}"}}"#
+                ),
+            ),
+        ]);
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
+        let err = client.upload_package("r", &path, false).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("SHA-256 verification"),
+            "expected 'SHA-256 verification' in error, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn summarize_error_body_reduces_html_to_title() {
+        let body = "<!doctype html>\n<html lang=\"en\">\n<head>\n  <title>Server Error (500)</title>\n</head>\n<body>\n  <h1>Server Error (500)</h1><p></p>\n</body>\n</html>\n";
+        assert_eq!(summarize_error_body(body), "HTML page: Server Error (500)");
+    }
+
+    #[test]
+    fn summarize_error_body_formats_api_error() {
+        let body = r#"{"code":"VALIDATION_ERROR","detail":"bad file","status":400}"#;
+        assert_eq!(summarize_error_body(body), "VALIDATION_ERROR: bad file");
+    }
+
+    #[test]
+    fn summarize_error_body_truncates_plain_text() {
+        let body = "x".repeat(1000);
+        let out = summarize_error_body(&body);
+        assert!(out.chars().count() <= MAX_ERROR_BODY_CHARS + 1);
+        assert!(out.ends_with('…'));
+        assert_eq!(summarize_error_body("  \n "), "<empty response body>");
+    }
+
+    #[tokio::test]
+    async fn upload_500_html_error_is_concise() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tool-1.0.0.deb");
+        std::fs::write(&path, b"x").unwrap();
+        let server = MockServer::start(vec![MockResponse::bytes(
+            500,
+            b"<!doctype html><html><head><title>Server Error (500)</title></head><body><h1>Server Error (500)</h1></body></html>".to_vec(),
+            &[("Content-Type", "text/html")],
+        )]);
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
+        let msg = client
+            .upload_package("r", &path, false)
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(msg.contains("Server Error (500)"), "got: {msg}");
+        assert!(!msg.contains("<body>"), "raw HTML leaked into error: {msg}");
+        assert!(msg.contains("worker"), "missing server-side hint: {msg}");
     }
 }

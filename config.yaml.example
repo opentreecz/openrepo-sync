@@ -9,7 +9,8 @@
 
 openrepo:
   # Base URL of your OpenRepo instance. No trailing slash.
-  api_url: "https://openrepo.example.com"
+  # ${VAR:-default} uses the default unless VAR is set (e.g. in .env).
+  api_url: "${OPENREPO_API_URL:-https://openrepo.example.com}"
 
   # API token, found in the OpenRepo web UI under your user profile
   # (also returned by GET /api/whoami as the "api_key" field).
@@ -43,7 +44,7 @@ openrepo:
 #
 # Use a list to prefer one architecture and fall back to another when upstream
 # releases do not publish the preferred architecture.
-arch_filter: amd64
+arch_filter: ${OPENREPO_SYNC_ARCH:-amd64}
 # arch_filter: [amd64, arm64]
 # arch_filter: []   # disable filename/fixed-URL arch filtering; APT/RPM use their defaults
 
@@ -51,6 +52,6 @@ arch_filter: amd64
 # `openrepo-sync --schedule` or via `docker compose up -d`.
 # Supported interval units: m = minutes, h = hours, d = days.
 schedule:
-  enabled: true
-  interval: "24h"
-  run_on_start: true
+  enabled: ${OPENREPO_SYNC_SCHEDULE_ENABLED:-true}
+  interval: "${OPENREPO_SYNC_INTERVAL:-24h}"
+  run_on_start: ${OPENREPO_SYNC_RUN_ON_START:-true}

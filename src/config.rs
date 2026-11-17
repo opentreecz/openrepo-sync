@@ -304,13 +304,26 @@ impl ProjectConfig {
     }
 }
 
-/// Regex for expanding ${ENV_VAR} patterns in config values.
-static ENV_VAR_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\$\{([^}]+)\}").unwrap());
+/// Regex for expanding `${ENV_VAR}` and `${ENV_VAR:-default}` patterns in config values.
+static ENV_VAR_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}").unwrap());
 
+/// Expand environment variables in a config file.
+///
+/// * `${VAR}` — replaced by the value of `VAR`; left untouched when unset.
+/// * `${VAR:-default}` — replaced by `VAR` when it is set and non-empty,
+///   otherwise by `default` (shell semantics). This lets the YAML files ship
+///   working defaults that `.env` / the environment can override.
 fn expand_env_vars(s: &str) -> String {
     ENV_VAR_RE
         .replace_all(s, |caps: &regex::Captures| {
-            std::env::var(&caps[1]).unwrap_or_else(|_| caps[0].to_string())
+            let value = std::env::var(&caps[1]).ok();
+            match caps.get(2) {
+                Some(default) => value
+                    .filter(|v| !v.is_empty())
+                    .unwrap_or_else(|| default.as_str().to_string()),
+                None => value.unwrap_or_else(|| caps[0].to_string()),
+            }
         })
         .into_owned()
 }
@@ -841,6 +854,27 @@ source:
     fn env_var_expansion_unknown_var_kept_as_is() {
         let result = super::expand_env_vars("api_key: ${SURELY_NOT_SET_XYZ}");
         assert_eq!(result, "api_key: ${SURELY_NOT_SET_XYZ}");
+    }
+
+    #[test]
+    fn env_var_expansion_default_used_when_unset() {
+        let result = super::expand_env_vars("interval: ${SURELY_NOT_SET_DEFAULT_XYZ:-24h}");
+        assert_eq!(result, "interval: 24h");
+    }
+
+    #[test]
+    fn env_var_expansion_default_overridden_by_env() {
+        // SAFETY: no concurrent env access to this variable in the test binary
+        unsafe { std::env::set_var("TEST_OPENREPO_URL_OVERRIDE", "https://repo.test") };
+        let result =
+            super::expand_env_vars("api_url: ${TEST_OPENREPO_URL_OVERRIDE:-https://example.com}");
+        assert_eq!(result, "api_url: https://repo.test");
+    }
+
+    #[test]
+    fn env_var_expansion_empty_default() {
+        let result = super::expand_env_vars("x: \"${SURELY_NOT_SET_EMPTY_XYZ:-}\"");
+        assert_eq!(result, "x: \"\"");
     }
 
     #[test]

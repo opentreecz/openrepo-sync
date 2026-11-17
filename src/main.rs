@@ -206,7 +206,7 @@ async fn run(cli: &Cli) -> Result<bool> {
                     )
                 }
                 models::SyncAction::Error(e) => {
-                    eprintln!("[{}] ERROR: {}", result.project_name, e);
+                    error!("[{}] {}", result.project_name, e);
                     had_error = true;
                 }
             }

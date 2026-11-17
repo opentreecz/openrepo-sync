@@ -245,7 +245,7 @@ impl RpmRepoSource {
         loop {
             match reader.read_event_into(&mut buf) {
                 Ok(Event::Start(ref e)) => match e.name().as_ref() {
-                    b"package" => {
+                    "package" => {
                         in_package = true;
                         name.clear();
                         arch.clear();
@@ -254,34 +254,31 @@ impl RpmRepoSource {
                         location_href.clear();
                         epoch = 0;
                     }
-                    b"name" if in_package => reading_name = true,
-                    b"arch" if in_package => reading_arch = true,
+                    "name" if in_package => reading_name = true,
+                    "arch" if in_package => reading_arch = true,
                     _ => {}
                 },
                 Ok(Event::Empty(ref e)) if in_package => match e.name().as_ref() {
-                    b"version" => {
+                    "version" => {
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
-                                b"epoch" => {
-                                    epoch = std::str::from_utf8(&attr.value)
-                                        .unwrap_or("0")
-                                        .parse()
-                                        .unwrap_or(0);
+                                "epoch" => {
+                                    epoch = attr.value.parse().unwrap_or(0);
                                 }
-                                b"ver" => {
-                                    ver = String::from_utf8_lossy(&attr.value).into_owned();
+                                "ver" => {
+                                    ver = attr.value.into_owned();
                                 }
-                                b"rel" => {
-                                    rel = String::from_utf8_lossy(&attr.value).into_owned();
+                                "rel" => {
+                                    rel = attr.value.into_owned();
                                 }
                                 _ => {}
                             }
                         }
                     }
-                    b"location" => {
+                    "location" => {
                         for attr in e.attributes().flatten() {
-                            if attr.key.as_ref() == b"href" {
-                                location_href = String::from_utf8_lossy(&attr.value).into_owned();
+                            if attr.key.as_ref() == "href" {
+                                location_href = attr.value.into_owned();
                             }
                         }
                     }
@@ -289,18 +286,18 @@ impl RpmRepoSource {
                 },
                 Ok(Event::Text(ref e)) => {
                     if reading_name {
-                        name = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        name = e.as_ref().to_string();
                         reading_name = false;
                     }
                     if reading_arch {
-                        arch = String::from_utf8_lossy(e.as_ref()).into_owned();
+                        arch = e.as_ref().to_string();
                         reading_arch = false;
                     }
                 }
                 Ok(Event::End(ref e)) => match e.name().as_ref() {
-                    b"name" => reading_name = false,
-                    b"arch" => reading_arch = false,
-                    b"package" if in_package => {
+                    "name" => reading_name = false,
+                    "arch" => reading_arch = false,
+                    "package" if in_package => {
                         in_package = false;
                         let entry = RpmPackageEntry {
                             name: name.clone(),

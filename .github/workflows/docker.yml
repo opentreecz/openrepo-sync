@@ -54,7 +54,7 @@ jobs:
 
       - name: Download amd64 packages
         if: steps.source.outputs.skip != 'true'
-        uses: dawidd6/action-download-artifact@v25
+        uses: dawidd6/action-download-artifact@v28
         with:
           workflow:    release.yml
           run_id:      ${{ steps.source.outputs.run_id }}
@@ -63,7 +63,7 @@ jobs:
 
       - name: Download arm64 packages
         if: steps.source.outputs.skip != 'true'
-        uses: dawidd6/action-download-artifact@v25
+        uses: dawidd6/action-download-artifact@v28
         with:
           workflow:    release.yml
           run_id:      ${{ steps.source.outputs.run_id }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Download armhf packages
         if: steps.source.outputs.skip != 'true'
-        uses: dawidd6/action-download-artifact@v25
+        uses: dawidd6/action-download-artifact@v28
         with:
           workflow:    release.yml
           run_id:      ${{ steps.source.outputs.run_id }}

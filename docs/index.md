@@ -1,12 +1,11 @@
 ---
 layout: home
-title: openrepo-sync
+title: Home
+nav_order: 1
 ---
 
 <p align="center">
-  <a href="https://github.com/opentreecz">
-    <img src="assets/logo.png" alt="OpenRepoSync" width="128" height="128">
-  </a>
+  <img src="assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="420">
 </p>
 
 # openrepo-sync

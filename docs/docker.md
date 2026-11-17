@@ -1,13 +1,12 @@
 ---
-layout: page
+layout: default
 title: Docker
 permalink: /docker/
+nav_order: 7
 ---
 
 <p align="center">
-  <a href="https://github.com/opentreecz">
-    <img src="assets/logo.png" alt="OpenRepoSync" width="96" height="96">
-  </a>
+  <img src="assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="360">
 </p>
 
 # Docker

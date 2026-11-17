@@ -1,13 +1,12 @@
 ---
-layout: page
+layout: default
 title: API Reference
 permalink: /api/
+nav_order: 6
 ---
 
 <p align="center">
-  <a href="https://github.com/opentreecz">
-    <img src="assets/logo.png" alt="OpenRepoSync" width="96" height="96">
-  </a>
+  <img src="assets/openrepo-sync-logo.svg" alt="OpenRepoSync" width="360">
 </p>
 
 # OpenRepo REST API Reference

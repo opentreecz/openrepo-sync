@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://github.com/opentreecz">
-    <img src="docs/assets/logo.png" alt="OpenTree" width="96" height="96">
+    <img src="docs/assets/logo.png" alt="OpenRepoSync" width="96" height="96">
   </a>
 </p>
 

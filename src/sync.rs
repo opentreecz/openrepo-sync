@@ -623,6 +623,27 @@ mod tests {
     }
 
     #[test]
+    fn prune_candidates_keep_newest_debian_tilde_version() {
+        let pkg = |uid: &str, ver: &str| crate::models::RepoPackage {
+            package_uid: uid.to_string(),
+            filename: format!("Lens-{ver}_amd64.deb"),
+            package_name: "lens".to_string(),
+            architecture: "amd64".to_string(),
+            version: PackageVersion::parse(ver),
+        };
+        let repo_packages = vec![
+            pkg("old", "2026.9.20601~latest"),
+            pkg("new", "2026.11.91422~latest"),
+        ];
+        let managed = HashSet::from([(String::from("lens"), String::from("amd64"))]);
+
+        let to_delete = prune_candidates(&repo_packages, &managed, 1);
+
+        assert_eq!(to_delete.len(), 1);
+        assert_eq!(to_delete[0].package_uid, "old");
+    }
+
+    #[test]
     fn managed_groups_use_remote_metadata_when_available() {
         let remote_packages = vec![RemotePackage {
             filename: "tool-1.0.0-amd64.deb".to_string(),

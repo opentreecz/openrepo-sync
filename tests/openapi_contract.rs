@@ -190,8 +190,8 @@ fn whoami_response_has_username() {
 fn cleanup_report_has_fields_used_by_client() {
     let Some(spec) = load_spec() else { return };
 
-    let schema = &spec["paths"]["/api/cleanup/"]["post"]["responses"]["200"]["content"]
-        ["application/json"]["schema"];
+    let schema = &spec["paths"]["/api/cleanup/"]["post"]["responses"]["200"]["content"]["application/json"]
+        ["schema"];
     for field in [
         "dry_run",
         "abandoned_uploads",

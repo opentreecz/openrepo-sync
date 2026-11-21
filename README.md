@@ -28,6 +28,7 @@ A command-line tool that keeps a self-hosted [OpenRepo](https://github.com/opent
 - **Optional SHA-256 verification** — direct URL sources can validate downloaded bytes before upload
 - **Configurable retention** — keep the N newest releases per package name and architecture, auto-prune the rest without touching unrelated packages in the same OpenRepo repo
 - **Dry-run mode** — preview all actions without modifying the repository
+- **Cleanup** — removes leftover downloads and staged `direct_url_latest` files, and can trigger OpenRepo's server-side cleanup of unused package files after each pass (`cleanup.server: report | apply`)
 - **Per-project YAML config files** — one file per tracked package; easy to add, remove, or disable
 - **`${ENV_VAR}` expansion** in config values for safe API key handling
 - **Structured logging** — quiet by default, full debug via `--verbose` or `RUST_LOG`
@@ -113,8 +114,13 @@ schedule:
   enabled: true
   interval: "24h"
   run_on_start: true
+cleanup:
+  local: true          # remove leftover downloads at the start of each run
+  local_min_age: "1h"  # only files older than this
+  server: off          # off | report | apply — call OpenRepo's POST /api/cleanup/ after each pass
 ```
 
+`cleanup` is described in [docs/configuration.md](docs/configuration.md#cleanup).
 `schedule` is used by `openrepo-sync --schedule` and Docker Compose. Supported intervals include `30m`, `6h`, `24h`, and `1d`.
 
 ### Per-project files (`projects/<name>.yaml`)
@@ -315,6 +321,7 @@ Options:
 ```
 src/
 ├── main.rs              CLI entry point
+├── cleanup.rs           Leftover-download sweep + server cleanup call
 ├── config.rs            YAML config loading, ${ENV_VAR} expansion
 ├── models.rs            PackageVersion, RemotePackage, SyncResult
 ├── version.rs           Version extraction from filenames, dpkg-deb, rpm

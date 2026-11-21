@@ -19,6 +19,8 @@ client to the OpenRepo server (Django/Vue.js).
 ```
 src/
   main.rs          — CLI entry point, scheduler loop, logging, USER_AGENT constant
+  cleanup.rs       — local leftover sweep (download_dir + staging_dir) and
+                     POST /api/cleanup/ call (config `cleanup:`)
   config.rs        — YAML config deserialization, ${ENV_VAR} expansion
   models.rs        — PackageVersion, RemotePackage, RepoPackage, SyncResult
   errors.rs        — Typed error types (UploadError, ApiError)
@@ -38,7 +40,7 @@ src/
 
 ## API Endpoints Used
 
-The client uses 5 of the server's 14 endpoint groups:
+The client uses 6 of the server's endpoint groups:
 
 | Method | URL | Purpose |
 |--------|-----|---------|
@@ -47,6 +49,7 @@ The client uses 5 of the server's 14 endpoint groups:
 | POST | `/api/{repo_uid}/upload/` | Upload package (multipart) |
 | GET | `/api/upload-status/{task_id}/` | Poll async upload status |
 | DELETE | `/api/{repo_uid}/pkg/{package_uid}/` | Delete package |
+| POST | `/api/cleanup/` | Server storage cleanup (optional, superuser, OpenRepo 2.11.0+) |
 
 Auth: `Authorization: Token <api_key>` header on all requests.
 

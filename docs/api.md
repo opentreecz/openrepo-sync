@@ -257,6 +257,7 @@ Copy a package to another repository. The exact request body fields (destination
 | `GET` | `/api/<repo_uid>/packages/` | List packages in a repo (paginated) |
 | `POST` | `/api/<repo_uid>/upload/` | Upload a new package |
 | `DELETE` | `/api/<repo_uid>/pkg/<package_uid>/` | Delete an old package (pruning) |
+| `POST` | `/api/cleanup/` | Server storage cleanup when `cleanup.server` is `report`/`apply` (OpenRepo 2.11.0+, superuser) |
 
 ---
 

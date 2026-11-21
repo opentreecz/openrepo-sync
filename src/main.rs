@@ -1,4 +1,5 @@
 mod arch;
+mod cleanup;
 mod config;
 mod errors;
 mod gpg;
@@ -148,6 +149,27 @@ async fn run(cli: &Cli) -> Result<bool> {
         .context("Authentication check failed — verify api_url and api_key in config")?;
     info!("Authenticated as: {}", username);
 
+    if global.cleanup.local {
+        let min_age = global.cleanup.local_min_age_duration()?;
+        let removed = cleanup::sweep_local(
+            &[global.download_dir.clone(), cleanup::staging_dir()],
+            min_age,
+            cli.dry_run,
+        );
+        if removed.files > 0 {
+            info!(
+                "{}{} leftover download(s) ({:.1} MB)",
+                if cli.dry_run {
+                    "[dry-run] Would remove "
+                } else {
+                    "Removed "
+                },
+                removed.files,
+                removed.bytes as f64 / 1e6
+            );
+        }
+    }
+
     debug!("Loading project configs from {}", cli.projects.display());
     let mut projects = config::ProjectConfig::load_all(&cli.projects)
         .with_context(|| format!("Failed to load projects from {}", cli.projects.display()))?;
@@ -212,6 +234,8 @@ async fn run(cli: &Cli) -> Result<bool> {
             }
         }
     }
+
+    cleanup::run_server_cleanup(&client, global.cleanup.server, cli.dry_run).await;
 
     Ok(had_error)
 }

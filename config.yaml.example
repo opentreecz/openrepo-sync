@@ -55,3 +55,20 @@ schedule:
   enabled: ${OPENREPO_SYNC_SCHEDULE_ENABLED:-true}
   interval: "${OPENREPO_SYNC_INTERVAL:-24h}"
   run_on_start: ${OPENREPO_SYNC_RUN_ON_START:-true}
+
+# Cleanup of unused files (see docs/configuration.md#cleanup).
+#   local:  remove leftover downloads from download_dir and the
+#           direct_url_latest staging dir (<tmp>/openrepo-sync-latest) at the
+#           start of every run. Only top-level files older than local_min_age
+#           are removed; download_dir must be a dedicated directory.
+#   server: after each sync pass, ask the OpenRepo server (>= 2.11.0) to
+#           garbage-collect unused package files, abandoned uploads, stale
+#           builds and publish dirs:
+#             off    — do nothing (default)
+#             report — log what the server would remove (dry-run)
+#             apply  — let the server delete it (needs a superuser API key)
+#           --dry-run always turns "apply" into "report".
+cleanup:
+  local: ${OPENREPO_SYNC_CLEANUP_LOCAL:-true}
+  local_min_age: "${OPENREPO_SYNC_CLEANUP_LOCAL_MIN_AGE:-1h}"
+  server: ${OPENREPO_SYNC_CLEANUP_SERVER:-off}

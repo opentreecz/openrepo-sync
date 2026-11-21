@@ -112,6 +112,24 @@ struct UploadStatusResponse {
     error_code: String,
 }
 
+/// Report returned by `POST /api/cleanup/` (OpenRepo >= 2.11.0).
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ServerCleanupReport {
+    pub dry_run: bool,
+    pub abandoned_uploads: u64,
+    pub stale_builds: u64,
+    pub orphan_files: u64,
+    pub orphan_bytes: u64,
+    pub empty_dirs: u64,
+    pub stale_publish_dirs: Vec<String>,
+    pub unmanaged_publish_dirs: Vec<String>,
+    pub old_upload_tasks: u64,
+    pub old_builds: u64,
+    pub skipped: Vec<String>,
+    pub errors: Vec<String>,
+}
+
 /// Typed response envelope for DRF's paginated list endpoints.
 #[derive(Debug, Deserialize)]
 struct PaginatedResponse<T> {
@@ -400,6 +418,39 @@ impl RepoClient {
             UPLOAD_POLL_MAX_ATTEMPTS as u64 * POLL_INTERVAL.as_secs(),
             task_id
         )))
+    }
+
+    /// Run the server-side storage cleanup (`POST /api/cleanup/`).
+    /// Requires a superuser API key.
+    pub async fn cleanup(&self, dry_run: bool) -> Result<ServerCleanupReport> {
+        let url = format!("{}/api/cleanup/", self.base_url);
+        debug!("Requesting server cleanup (dry_run={})", dry_run);
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", self.auth_header())
+            .json(&serde_json::json!({ "dry_run": dry_run }))
+            .send()
+            .await
+            .context("Cleanup request failed")?;
+
+        let status = resp.status();
+        if status.is_success() {
+            return resp.json().await.context("Failed to parse cleanup report");
+        }
+        let body = resp.text().await.unwrap_or_default();
+        match status {
+            StatusCode::FORBIDDEN => bail!("server cleanup requires a superuser API key"),
+            StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED => {
+                bail!("server does not support cleanup (needs OpenRepo >= 2.11.0)")
+            }
+            StatusCode::CONFLICT => bail!("another cleanup is already running on the server"),
+            _ => bail!(
+                "Cleanup failed ({}): {}",
+                status,
+                summarize_error_body(&body)
+            ),
+        }
     }
 
     pub async fn delete_package(&self, repo_uid: &str, package_uid: &str) -> Result<()> {

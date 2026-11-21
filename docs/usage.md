@@ -58,13 +58,17 @@ RUST_LOG=warn openrepo-sync --config /etc/openrepo-sync/config.yaml
 
 For each project, in order:
 
-1. Verify authentication via `GET /api/whoami` (once per run, on startup)
+1. Verify authentication via `GET /api/whoami` (once per run, on startup), then remove leftover downloads older than `cleanup.local_min_age` (see [Cleanup](configuration.md#cleanup))
 2. Fetch the latest `keep_versions` releases from the upstream source
 3. List packages currently in the OpenRepo repository
 4. Diff by filename **and version** — a package is uploaded only if neither its filename nor its version is already present (packages whose version cannot be detected are compared by filename alone)
 5. For each missing package: download → optional SHA-256 verification → upload → remove local temp file. If OpenRepo rejects the upload as a duplicate, the project's `on_conflict` policy decides: `error` (default), `skip`, or `overwrite`
 6. Re-fetch the repo package list and determine the `(package_name, architecture)` groups managed by the current project
 7. Delete packages beyond `keep_versions` only within those managed groups, keeping the newest versions per package name and architecture
+
+After a project finishes, its `direct_url_latest` staging files are deleted whether or not they were uploaded.
+
+After all projects: if `cleanup.server` is `report` or `apply`, call the server's `POST /api/cleanup/` and log its report (dry-run for `report` and under `--dry-run`).
 
 Projects sharing the same OpenRepo repository UID do not prune each other's packages. Manual uploads outside the current project's managed groups are left untouched.
 

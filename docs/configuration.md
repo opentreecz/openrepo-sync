@@ -61,6 +61,10 @@ schedule:
   enabled: true
   interval: "24h"
   run_on_start: true
+cleanup:
+  local: true          # remove leftover downloads at the start of each run
+  local_min_age: "1h"  # only files older than this
+  server: off          # off | report | apply — call OpenRepo's POST /api/cleanup/ after each pass
 ```
 
 ### Fields
@@ -71,6 +75,7 @@ schedule:
 | `openrepo.api_key` | Yes | — | API token. Supports `${ENV_VAR}` expansion |
 | `download_dir` | No | system temp dir | Directory for temporary package downloads |
 | `arch_filter` | No | `amd64` | Global architecture preference used by every project and source type |
+| `cleanup` | No | see [Cleanup](#cleanup) | Removal of leftover local downloads and optional server-side cleanup |
 
 ### Architecture Filter
 
@@ -102,6 +107,42 @@ schedule:
   interval: "6h"
   run_on_start: true
 ```
+
+### Cleanup
+
+openrepo-sync deletes every downloaded package right after uploading it, and
+`direct_url_latest` staging files (`<tmp>/openrepo-sync-latest/`) once the
+project has been synced, whether or not they were uploaded. The `cleanup`
+block covers what remains after crashes, killed containers or failed
+uploads, and can trigger the OpenRepo server's own cleanup.
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `cleanup.local` | No | `true` | At the start of every run, remove leftover files from `download_dir` and the `direct_url_latest` staging directory |
+| `cleanup.local_min_age` | No | `1h` | Only files older than this are removed (`30m`, `6h`, `1d`) |
+| `cleanup.server` | No | `off` | `off`: do nothing. `report`: after each sync pass, call `POST /api/cleanup/` in dry-run mode and log the server's report. `apply`: let the server delete the unused data |
+
+Local cleanup only deletes **top-level regular files**. It never deletes
+sub-directories or symlinks, and it refuses to sweep `/`, `$HOME` or the bare
+system temp directory. Keep `download_dir` a dedicated directory.
+
+Server cleanup needs OpenRepo **2.11.0+** and a **superuser** API key. It
+removes package files that nothing references, uploads whose processing was
+lost, builds stuck in `running`, publish directories left by failed builds and
+old upload/build history. See OpenRepo's
+[Maintenance & Cleanup](https://opentreecz.github.io/openrepo/maintenance/)
+guide. Failures (missing permission, older server, a cleanup already running)
+are logged as warnings and never fail the sync. `--dry-run` turns `apply` into
+`report`.
+
+```yaml
+cleanup:
+  server: apply   # e.g. once a day together with schedule.interval: 24h
+```
+
+Docker Compose: set `OPENREPO_SYNC_CLEANUP_LOCAL`,
+`OPENREPO_SYNC_CLEANUP_LOCAL_MIN_AGE` and `OPENREPO_SYNC_CLEANUP_SERVER`.
+The shipped `config.yaml.example` reads them.
 
 ### API Key
 

@@ -68,6 +68,55 @@ pub struct GlobalConfig {
     pub arch_filter: Vec<String>,
     #[serde(default)]
     pub schedule: ScheduleConfig,
+    #[serde(default)]
+    pub cleanup: CleanupConfig,
+}
+
+/// What to do with the OpenRepo server's cleanup endpoint after a sync pass.
+#[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ServerCleanup {
+    /// Do not call the server (default).
+    #[default]
+    Off,
+    /// Ask the server what it would remove (dry-run) and log the report.
+    Report,
+    /// Let the server delete unused data. Needs a superuser API key.
+    Apply,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct CleanupConfig {
+    /// Remove leftover files from `download_dir` and the `direct_url_latest`
+    /// staging directory at the start of every run.
+    #[serde(default = "default_true")]
+    pub local: bool,
+    /// Only local files older than this are removed (e.g. `30m`, `1h`, `1d`).
+    #[serde(default = "default_local_min_age")]
+    pub local_min_age: String,
+    #[serde(default)]
+    pub server: ServerCleanup,
+}
+
+impl Default for CleanupConfig {
+    fn default() -> Self {
+        Self {
+            local: true,
+            local_min_age: default_local_min_age(),
+            server: ServerCleanup::Off,
+        }
+    }
+}
+
+fn default_local_min_age() -> String {
+    "1h".to_string()
+}
+
+impl CleanupConfig {
+    pub fn local_min_age_duration(&self) -> Result<Duration> {
+        parse_interval(&self.local_min_age)
+            .with_context(|| format!("Invalid cleanup.local_min_age '{}'", self.local_min_age))
+    }
 }
 
 fn default_download_dir() -> PathBuf {
@@ -113,23 +162,23 @@ impl ScheduleConfig {
 fn parse_interval(value: &str) -> Result<Duration> {
     let value = value.trim();
     if value.len() < 2 {
-        anyhow::bail!("Invalid schedule interval '{value}'; expected format like 30m, 6h, or 1d");
+        anyhow::bail!("Invalid interval '{value}'; expected format like 30m, 6h, or 1d");
     }
 
     let (amount, unit) = value.split_at(value.len() - 1);
     let amount: u64 = amount.parse().with_context(|| {
-        format!("Invalid schedule interval '{value}'; expected format like 30m, 6h, or 1d")
+        format!("Invalid interval '{value}'; expected format like 30m, 6h, or 1d")
     })?;
 
     if amount == 0 {
-        anyhow::bail!("Invalid schedule interval '{value}'; interval must be greater than zero");
+        anyhow::bail!("Invalid interval '{value}'; interval must be greater than zero");
     }
 
     let seconds = match unit {
         "m" => amount * 60,
         "h" => amount * 60 * 60,
         "d" => amount * 24 * 60 * 60,
-        _ => anyhow::bail!("Invalid schedule interval '{value}'; supported units are m, h, and d"),
+        _ => anyhow::bail!("Invalid interval '{value}'; supported units are m, h, and d"),
     };
 
     Ok(Duration::from_secs(seconds))
@@ -394,6 +443,60 @@ schedule:
         assert!(cfg.schedule.enabled);
         assert_eq!(cfg.schedule.interval, "6h");
         assert!(!cfg.schedule.run_on_start);
+    }
+
+    #[test]
+    fn cleanup_defaults() {
+        let yaml = "openrepo:\n  api_url: \"u\"\n  api_key: \"k\"\n";
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(cfg.cleanup.local);
+        assert_eq!(cfg.cleanup.local_min_age, "1h");
+        assert_eq!(
+            cfg.cleanup.local_min_age_duration().unwrap(),
+            Duration::from_secs(3600)
+        );
+        assert_eq!(cfg.cleanup.server, ServerCleanup::Off);
+    }
+
+    #[test]
+    fn cleanup_explicit_values() {
+        let yaml = r#"
+openrepo:
+  api_url: "u"
+  api_key: "k"
+cleanup:
+  local: false
+  local_min_age: "30m"
+  server: apply
+"#;
+        let cfg: GlobalConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(!cfg.cleanup.local);
+        assert_eq!(
+            cfg.cleanup.local_min_age_duration().unwrap(),
+            Duration::from_secs(1800)
+        );
+        assert_eq!(cfg.cleanup.server, ServerCleanup::Apply);
+    }
+
+    #[test]
+    fn cleanup_example_config_parses() {
+        // config.yaml.example uses unquoted `server: off` after ${VAR:-off} expansion.
+        let content = expand_env_vars(include_str!("../config.yaml.example"));
+        let cfg: GlobalConfig = serde_yaml::from_str(&content).unwrap();
+        assert!(cfg.cleanup.local);
+        assert_eq!(cfg.cleanup.server, ServerCleanup::Off);
+    }
+
+    #[test]
+    fn cleanup_rejects_unknown_server_mode_and_bad_age() {
+        let yaml = "openrepo:\n  api_url: u\n  api_key: k\ncleanup:\n  server: always\n";
+        assert!(serde_yaml::from_str::<GlobalConfig>(yaml).is_err());
+        let cfg = CleanupConfig {
+            local_min_age: "soon".into(),
+            ..Default::default()
+        };
+        let err = format!("{:#}", cfg.local_min_age_duration().unwrap_err());
+        assert!(err.contains("cleanup.local_min_age"), "{err}");
     }
 
     #[test]

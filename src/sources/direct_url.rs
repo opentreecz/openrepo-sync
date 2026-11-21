@@ -140,9 +140,7 @@ impl DirectUrlSource {
 
         // Persist the temp file to a stable path in the same temp directory.
         // This prevents RAII deletion while keeping the disk clean after sync.
-        let stable_path = std::env::temp_dir()
-            .join("openrepo-sync-latest")
-            .join(&versioned_filename);
+        let stable_path = crate::cleanup::staging_dir().join(&versioned_filename);
         if let Some(parent) = stable_path.parent() {
             std::fs::create_dir_all(parent).context("Failed to create staging directory")?;
         }

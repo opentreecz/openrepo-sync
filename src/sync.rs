@@ -61,6 +61,9 @@ async fn sync_project_inner(
 
     info!("[{}] Fetching upstream packages...", project.name);
     let remote_packages = fetch_upstream(project, http_client, arch_filter).await?;
+    // Staged direct_url_latest downloads are removed when this sync ends,
+    // whether they were uploaded, already present upstream, or failed.
+    let _staged = StagedFiles::from_remotes(&remote_packages);
     debug!(
         "[{}] Found {} upstream packages",
         project.name,
@@ -174,6 +177,38 @@ async fn sync_project_inner(
     }
 
     Ok(actions)
+}
+
+/// Deletes `direct_url_latest` staging files when dropped. Only paths inside
+/// [`crate::cleanup::staging_dir`] are touched, never user-provided `file://`
+/// sources.
+struct StagedFiles(Vec<std::path::PathBuf>);
+
+impl StagedFiles {
+    fn from_remotes(remotes: &[RemotePackage]) -> Self {
+        Self::within(remotes, &crate::cleanup::staging_dir())
+    }
+
+    fn within(remotes: &[RemotePackage], staging: &Path) -> Self {
+        Self(
+            remotes
+                .iter()
+                .filter_map(|r| r.download_url.strip_prefix("file://"))
+                .map(std::path::PathBuf::from)
+                .filter(|p| p.starts_with(staging))
+                .collect(),
+        )
+    }
+}
+
+impl Drop for StagedFiles {
+    fn drop(&mut self) {
+        for path in &self.0 {
+            if std::fs::remove_file(path).is_ok() {
+                debug!("Removed staged file {}", path.display());
+            }
+        }
+    }
 }
 
 fn managed_groups(
@@ -374,9 +409,10 @@ async fn download_package(
 
     let bytes = resp.bytes().await.context("Failed to read download body")?;
     verify_sha256_bytes(bytes.as_ref(), remote.sha256.as_deref())?;
-    tokio::fs::write(&dest, &bytes)
-        .await
-        .with_context(|| format!("Failed to write {}", dest.display()))?;
+    if let Err(e) = tokio::fs::write(&dest, &bytes).await {
+        let _ = tokio::fs::remove_file(&dest).await;
+        return Err(e).with_context(|| format!("Failed to write {}", dest.display()));
+    }
 
     Ok(dest)
 }
@@ -620,6 +656,30 @@ mod tests {
 
         assert_eq!(to_delete.len(), 1);
         assert_eq!(to_delete[0].package_uid, "u2");
+    }
+
+    #[test]
+    fn staged_files_removed_on_drop_only_inside_staging_dir() {
+        let staging = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let staged = staging.path().join("tool_1.0_amd64.deb");
+        let user_file = outside.path().join("mine.deb");
+        std::fs::write(&staged, b"x").unwrap();
+        std::fs::write(&user_file, b"x").unwrap();
+        let remote = |path: &Path| RemotePackage {
+            filename: "f.deb".to_string(),
+            version: PackageVersion::parse("1.0.0"),
+            download_url: format!("file://{}", path.display()),
+            sha256: None,
+            package_name: None,
+            architecture: None,
+        };
+        let remotes = vec![remote(&staged), remote(&user_file)];
+
+        drop(StagedFiles::within(&remotes, staging.path()));
+
+        assert!(!staged.exists());
+        assert!(user_file.exists());
     }
 
     #[test]

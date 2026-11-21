@@ -79,6 +79,7 @@ fn required_endpoint_paths_exist() {
         "/api/upload-status/{task_id}/",
         "/api/{repo_uid}/packages/",
         "/api/{repo_uid}/pkg/{package_uid}/",
+        "/api/cleanup/",
     ];
 
     for path in required {
@@ -181,6 +182,35 @@ fn whoami_response_has_username() {
         "username",
         "UserResponse (GET /api/whoami → 200)",
     );
+}
+
+/// `ServerCleanupReport` in src/repo_client.rs.
+/// Spec: POST /api/cleanup/ → 200 → $ref CleanupReport
+#[test]
+fn cleanup_report_has_fields_used_by_client() {
+    let Some(spec) = load_spec() else { return };
+
+    let schema = &spec["paths"]["/api/cleanup/"]["post"]["responses"]["200"]["content"]
+        ["application/json"]["schema"];
+    for field in [
+        "dry_run",
+        "abandoned_uploads",
+        "stale_builds",
+        "orphan_files",
+        "orphan_bytes",
+        "stale_publish_dirs",
+        "unmanaged_publish_dirs",
+        "old_upload_tasks",
+        "old_builds",
+        "errors",
+    ] {
+        assert_has_property(
+            &spec,
+            schema,
+            field,
+            "ServerCleanupReport (POST /api/cleanup/ → 200)",
+        );
+    }
 }
 
 /// `ApiError` in src/errors.rs: `{ code: String, detail: String, status: u16 }`

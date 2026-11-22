@@ -966,6 +966,7 @@ dependencies = [
  "futures",
  "glob",
  "lzma-rs",
+ "percent-encoding",
  "quick-xml",
  "regex",
  "reqwest",

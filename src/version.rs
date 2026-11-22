@@ -7,9 +7,19 @@ use std::sync::LazyLock;
 /// Regex for extracting semver-like versions from filenames.
 /// Matches: name-1.2.3, name_1.2.3_amd64, name-v1.2.3-rc1
 static VERSION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"[-_]v?(\d+\.\d+[\d.\-+a-zA-Z]*)").unwrap());
+    LazyLock::new(|| Regex::new(r"[-_]v?(\d+\.\d+[\d.\-+~^a-zA-Z]*)").unwrap());
 
 pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
+    if let Some(stem) = filename.strip_suffix(".deb")
+        && let Some((name_version, arch)) = stem.rsplit_once('_')
+        && let Some((name, version)) = name_version.split_once('_')
+        && !name.is_empty()
+        && !arch.is_empty()
+        && version.starts_with(|c: char| c.is_ascii_digit())
+        && !version.contains('_')
+    {
+        return Some(PackageVersion::parse(version));
+    }
     // Strip known package/archive extensions before matching so the extension
     // is never captured as part of the version string.
     let stripped = filename
@@ -28,8 +38,14 @@ pub fn extract_version_from_filename(filename: &str) -> Option<PackageVersion> {
 }
 
 pub fn extract_version_dpkg(path: &Path) -> Result<String> {
+    dpkg_field(path, "Version")
+}
+
+fn dpkg_field(path: &Path, field: &str) -> Result<String> {
     let output = std::process::Command::new("dpkg-deb")
-        .args(["--field", &path.to_string_lossy(), "Version"])
+        .arg("--field")
+        .arg(path)
+        .arg(field)
         .output()
         .context("Failed to run dpkg-deb — is dpkg installed?")?;
     if !output.status.success() {
@@ -43,28 +59,50 @@ pub fn extract_version_dpkg(path: &Path) -> Result<String> {
 }
 
 pub fn extract_architecture_dpkg(path: &Path) -> Result<String> {
-    let output = std::process::Command::new("dpkg-deb")
-        .args(["--field", &path.to_string_lossy(), "Architecture"])
-        .output()
-        .context("Failed to run dpkg-deb — is dpkg installed?")?;
-    if !output.status.success() {
-        bail!(
-            "dpkg-deb failed for {}: {}",
-            path.display(),
-            String::from_utf8_lossy(&output.stderr)
-        );
+    dpkg_field(path, "Architecture")
+}
+
+/// Vendor aliases are common. When the basename actually declares a Debian
+/// identity, require it to describe the package inside (epochs may be omitted).
+pub fn verify_upload_format(path: &Path, filename: &str) -> Result<()> {
+    match path.extension().and_then(|ext| ext.to_str()) {
+        Some("deb") => {
+            let actual = extract_version_dpkg(path)?;
+            anyhow::ensure!(!actual.is_empty(), "DEB is missing Version");
+            let parts: Vec<_> = filename.trim_end_matches(".deb").split('_').collect();
+            if let [name, version, arch] = parts.as_slice()
+                && version.starts_with(|c: char| c.is_ascii_digit())
+            {
+                let epochless = actual.split_once(':').map_or(actual.as_str(), |(_, v)| v);
+                anyhow::ensure!(
+                    (*version == actual || *version == epochless)
+                        && *name == dpkg_field(path, "Package")?
+                        && *arch == extract_architecture_dpkg(path)?,
+                    "Debian filename {filename:?} disagrees with package metadata"
+                );
+            }
+        }
+        Some("rpm") => {
+            extract_version_rpm(path)?;
+        }
+        _ if filename.to_ascii_lowercase().ends_with(".deb")
+            || filename.to_ascii_lowercase().ends_with(".rpm") =>
+        {
+            bail!("Expected lowercase package extension in {filename:?}")
+        }
+        _ => {}
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(())
 }
 
 pub fn extract_version_rpm(path: &Path) -> Result<String> {
+    rpm_field(path, "%{VERSION}-%{RELEASE}")
+}
+
+fn rpm_field(path: &Path, field: &str) -> Result<String> {
     let output = std::process::Command::new("rpm")
-        .args([
-            "-qp",
-            "--queryformat",
-            "%{VERSION}-%{RELEASE}",
-            &path.to_string_lossy(),
-        ])
+        .args(["-qp", "--queryformat", field])
+        .arg(path)
         .output()
         .context("Failed to run rpm — is rpm installed?")?;
     if !output.status.success() {
@@ -90,6 +128,14 @@ pub fn extract_architecture_rpm(path: &Path) -> Result<String> {
         );
     }
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+pub fn package_name(path: &Path) -> Result<String> {
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("deb") => dpkg_field(path, "Package"),
+        Some("rpm") => rpm_field(path, "%{NAME}"),
+        _ => bail!("Unsupported package format"),
+    }
 }
 
 /// Extract the package name from a filename.
@@ -187,6 +233,12 @@ mod tests {
     use crate::models::PackageVersion;
 
     // ── extract_version_from_filename ──────────────────────────────────────
+
+    #[test]
+    fn deb_versions_keep_epoch_tilde_and_revision() {
+        let version = extract_version_from_filename("pkg_2:1.0~rc1-2+deb12u1_amd64.deb").unwrap();
+        assert_eq!(version.to_string(), "2:1.0~rc1-2+deb12u1");
+    }
 
     #[test]
     fn filename_dash_semver_deb() {

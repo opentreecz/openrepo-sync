@@ -310,8 +310,19 @@ Options:
 | Requirement | When needed |
 |---|---|
 | A running [OpenRepo](https://github.com/opentreecz/openrepo) instance | Always |
-| `dpkg-deb` (package: `dpkg`) | `direct_url_latest` with `.deb` packages |
-| `rpm` | `direct_url_latest` with `.rpm` packages |
+| `dpkg-deb` (package: `dpkg`) | Validate `.deb` metadata before upload; `direct_url_latest` version detection |
+| `rpm` | Validate `.rpm` metadata before upload; `direct_url_latest` version detection |
+
+Sync accepts portable ASCII basenames (letters, digits, internal spaces and
+`._+-~:^`). Paths, control characters, surrounding whitespace and leftover
+percent escapes are rejected rather than renamed. URL basenames and UTF-8
+`filename*` parameters are decoded once; literal asset names and APT `Filename`
+fields are not URL-decoded. For example, `%7E` in a URL becomes `~`, while
+`%257E` is rejected. Invalid names stop that project's sync before pruning.
+For conventional `name_version_arch.deb` names with a numeric version, the
+declared name, version and architecture must match the package header (the
+Debian epoch may be omitted). DEB/RPM metadata must be readable by the corresponding package tool; this is
+a format check, not a package signature or full payload verification.
 | `gpg` | `deb_repo` with `verify_gpg: true` |
 
 ---

@@ -64,6 +64,20 @@ async fn sync_project_inner(
     // Staged direct_url_latest downloads are removed when this sync ends,
     // whether they were uploaded, already present upstream, or failed.
     let _staged = StagedFiles::from_remotes(&remote_packages);
+    for remote in &remote_packages {
+        crate::filename::validate(&remote.filename)?;
+        match &project.source {
+            SourceConfig::DebRepo { .. } if !remote.filename.ends_with(".deb") => bail!(
+                "APT index returned a non-DEB filename: {:?}",
+                remote.filename
+            ),
+            SourceConfig::RpmRepo { .. } if !remote.filename.ends_with(".rpm") => bail!(
+                "RPM index returned a non-RPM filename: {:?}",
+                remote.filename
+            ),
+            _ => {}
+        }
+    }
     debug!(
         "[{}] Found {} upstream packages",
         project.name,
@@ -111,7 +125,9 @@ async fn sync_project_inner(
                 let upload_result = client
                     .upload_package(&project.repo_uid, &path, overwrite)
                     .await;
-                let _ = tokio::fs::remove_file(&path).await;
+                if !remote.download_url.starts_with("file://") {
+                    let _ = tokio::fs::remove_file(&path).await;
+                }
                 match upload_result {
                     Ok(()) => {
                         actions.push(SyncAction::Uploaded {
@@ -193,9 +209,13 @@ impl StagedFiles {
         Self(
             remotes
                 .iter()
-                .filter_map(|r| r.download_url.strip_prefix("file://"))
-                .map(std::path::PathBuf::from)
-                .filter(|p| p.starts_with(staging))
+                .filter_map(|r| {
+                    reqwest::Url::parse(&r.download_url)
+                        .ok()?
+                        .to_file_path()
+                        .ok()
+                })
+                .filter(|p| p.parent() == Some(staging))
                 .collect(),
         )
     }
@@ -380,8 +400,16 @@ async fn download_package(
     http_client: &reqwest::Client,
 ) -> Result<std::path::PathBuf> {
     // file:// URLs are already on disk (from DirectUrlLatest pre-download)
-    if let Some(path_str) = remote.download_url.strip_prefix("file://") {
-        let path = std::path::PathBuf::from(path_str);
+    if remote.download_url.starts_with("file://") {
+        let path = reqwest::Url::parse(&remote.download_url)?
+            .to_file_path()
+            .map_err(|_| anyhow::anyhow!("Invalid local package URL"))?;
+        if path.file_name().and_then(|s| s.to_str()) != Some(&remote.filename) {
+            bail!(
+                "Local filename differs from selected package {:?}",
+                remote.filename
+            );
+        }
         if !path.exists() {
             bail!(
                 "Pre-downloaded package not found on disk: {}",
@@ -850,7 +878,14 @@ mod tests {
     async fn uploads_local_package_and_reports_uploaded() {
         let staging = tempfile::tempdir().unwrap();
         let pkg_path = staging.path().join("tool-1.2.0.deb");
-        std::fs::write(&pkg_path, b"fake-deb").unwrap();
+        if !crate::test_util::dpkg_deb_available() {
+            return;
+        }
+        std::fs::rename(
+            crate::test_util::build_minimal_deb(staging.path(), "1.2.0"),
+            &pkg_path,
+        )
+        .unwrap();
 
         let server = MockServer::start(vec![
             empty_list(),                                   // initial repo listing
@@ -881,8 +916,8 @@ mod tests {
             &result.actions[0],
             SyncAction::Uploaded { version } if *version == PackageVersion::parse("1.2.0")
         ));
-        // The uploaded file is cleaned up afterwards.
-        assert!(!pkg_path.exists());
+        // A user-provided file:// source isn't a disposable download.
+        assert!(pkg_path.exists());
 
         let requests = server.requests();
         assert!(requests[1].starts_with("POST /api/r/upload/"));
@@ -891,7 +926,7 @@ mod tests {
     #[tokio::test]
     async fn conflict_with_skip_policy_reports_skipped() {
         let staging = tempfile::tempdir().unwrap();
-        let pkg_path = staging.path().join("tool-1.2.0.deb");
+        let pkg_path = staging.path().join("tool-1.2.0.zip");
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         // Server accepts upload (202) then background processing fails with
@@ -934,7 +969,7 @@ mod tests {
     async fn conflict_with_skip_policy_http409_reports_skipped() {
         // Phase 1.3+ path: server returns 409 Conflict directly (synchronous).
         let staging = tempfile::tempdir().unwrap();
-        let pkg_path = staging.path().join("tool-1.2.0.deb");
+        let pkg_path = staging.path().join("tool-1.2.0.zip");
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         let server = MockServer::start(vec![
@@ -973,7 +1008,7 @@ mod tests {
     #[tokio::test]
     async fn conflict_with_error_policy_reports_error() {
         let staging = tempfile::tempdir().unwrap();
-        let pkg_path = staging.path().join("tool-1.2.0.deb");
+        let pkg_path = staging.path().join("tool-1.2.0.zip");
         std::fs::write(&pkg_path, b"fake-deb").unwrap();
 
         let server = MockServer::start(vec![

@@ -221,7 +221,6 @@ impl DebRepoSource {
         let mut result = Vec::new();
 
         for stanza in text.split("\n\n") {
-            let stanza = stanza.trim();
             if stanza.is_empty() {
                 continue;
             }
@@ -237,7 +236,7 @@ impl DebRepoSource {
                 } else if let Some(v) = line.strip_prefix("Version: ") {
                     version = Some(v.trim());
                 } else if let Some(v) = line.strip_prefix("Filename: ") {
-                    filename = Some(v.trim());
+                    filename = Some(v);
                 } else if let Some(v) = line.strip_prefix("Architecture: ") {
                     architecture = Some(v.trim());
                 }
@@ -274,7 +273,19 @@ impl DebRepoSource {
                 continue;
             }
 
-            let download_url = format!("{}/{}", self.url, file.trim_start_matches('/'));
+            // APT Filename is a literal repository path, not an escaped URI.
+            // Encode delimiters in directory components as well as the basename.
+            const ESCAPE: &percent_encoding::AsciiSet = &percent_encoding::CONTROLS
+                .add(b'%')
+                .add(b'?')
+                .add(b'#')
+                .add(b' ')
+                .add(b'\\');
+            let download_url = format!(
+                "{}/{}",
+                self.url,
+                percent_encoding::utf8_percent_encode(file.trim_start_matches('/'), ESCAPE)
+            );
 
             result.push(RemotePackage {
                 filename: basename.to_string(),

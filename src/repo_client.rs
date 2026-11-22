@@ -259,8 +259,10 @@ impl RepoClient {
         let filename = path
             .file_name()
             .and_then(|n| n.to_str())
-            .unwrap_or("package")
+            .context("Missing or non-UTF-8 upload filename")
+            .map_err(UploadError::Other)?
             .to_string();
+        crate::filename::validate(&filename).map_err(UploadError::Other)?;
 
         debug!("Uploading {} to {}", filename, url);
 
@@ -269,6 +271,9 @@ impl RepoClient {
             .with_context(|| format!("Failed to read file for upload: {}", path.display()))
             .map_err(UploadError::Other)?;
 
+        crate::version::verify_upload_format(path, &filename)
+            .with_context(|| format!("Cannot verify package format for {filename:?}"))
+            .map_err(UploadError::Other)?;
         let sha256 = compute_sha256(&bytes);
 
         let file_part = Part::bytes(bytes).file_name(filename.clone());
@@ -648,18 +653,34 @@ mod tests {
     #[tokio::test]
     async fn upload_package_posts_multipart_to_repo_endpoint() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
-        std::fs::write(&path, b"fake-deb-bytes").unwrap();
+        if !crate::test_util::dpkg_deb_available() {
+            return;
+        }
+        let path = dir.path().join("testpkg_1.0~rc1+2_all.deb");
+        std::fs::rename(
+            crate::test_util::build_minimal_deb(dir.path(), "1.0~rc1+2"),
+            &path,
+        )
+        .unwrap();
 
         // Server returns 200 (legacy sync response — no async polling needed)
         let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
         client.upload_package("myrepo", &path, false).await.unwrap();
 
+        let mislabeled = dir.path().join("testpkg_1.0~rc1+2_arm64.deb");
+        std::fs::rename(&path, &mislabeled).unwrap();
+        assert!(
+            client
+                .upload_package("myrepo", &mislabeled, false)
+                .await
+                .is_err()
+        );
         let requests = server.requests();
+        assert_eq!(requests.len(), 1);
         assert!(requests[0].starts_with("POST /api/myrepo/upload/"));
         assert!(requests[0].contains("name=\"package_file\""));
-        assert!(requests[0].contains("tool-1.0.0.deb"));
+        assert!(requests[0].contains("filename=\"testpkg_1.0~rc1+2_all.deb\""));
         assert!(!requests[0].contains("name=\"overwrite\""));
     }
 
@@ -671,7 +692,7 @@ mod tests {
             MockResponse::json(200, r#"{"status":"completed","error_message":""}"#),
         ]);
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake").unwrap();
 
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
@@ -697,7 +718,7 @@ mod tests {
             ),
         ]);
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake").unwrap();
 
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
@@ -719,7 +740,7 @@ mod tests {
             MockResponse::json(200, r#"{"status":"completed","error_message":""}"#),
         ]);
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake").unwrap();
 
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
@@ -732,7 +753,7 @@ mod tests {
     #[tokio::test]
     async fn upload_package_sets_overwrite_field() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake").unwrap();
 
         let server = MockServer::start(vec![MockResponse::json(200, "{}")]);
@@ -746,7 +767,7 @@ mod tests {
     #[tokio::test]
     async fn upload_package_failure_includes_status_and_body() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake").unwrap();
 
         let server = MockServer::start(vec![MockResponse::json(400, "duplicate package")]);
@@ -768,6 +789,18 @@ mod tests {
     }
 
     // ── delete_package ─────────────────────────────────────────────────────
+    #[tokio::test]
+    async fn wrong_format_and_ambiguous_filename_never_post() {
+        let server = MockServer::start(vec![]);
+        let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        for name in ["page.deb", "page.rpm", "bad%20name.zip"] {
+            let path = dir.path().join(name);
+            std::fs::write(&path, b"<html>Not a package</html>").unwrap();
+            assert!(client.upload_package("r", &path, false).await.is_err());
+        }
+        assert!(server.requests().is_empty());
+    }
 
     #[tokio::test]
     async fn delete_package_hits_pkg_endpoint() {
@@ -807,7 +840,7 @@ mod tests {
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
-        let pkg_path = tmp.path().join("test.deb");
+        let pkg_path = tmp.path().join("test.bin");
         std::fs::write(&pkg_path, b"fake-package").unwrap();
 
         let err = client
@@ -829,7 +862,7 @@ mod tests {
         let client = RepoClient::new(&server.url, "k", test_client()).unwrap();
 
         let tmp = tempfile::tempdir().unwrap();
-        let pkg_path = tmp.path().join("test.deb");
+        let pkg_path = tmp.path().join("test.bin");
         std::fs::write(&pkg_path, b"fake-package").unwrap();
 
         let err = client
@@ -844,7 +877,7 @@ mod tests {
     #[tokio::test]
     async fn upload_package_sends_sha256_field() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         let content = b"fake-package-bytes";
         std::fs::write(&path, content).unwrap();
         let expected_sha256 = compute_sha256(content);
@@ -867,7 +900,7 @@ mod tests {
     #[tokio::test]
     async fn upload_poll_verifies_matching_sha256() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         let content = b"fake-package-bytes";
         std::fs::write(&path, content).unwrap();
         let expected_sha256 = compute_sha256(content);
@@ -888,7 +921,7 @@ mod tests {
     #[tokio::test]
     async fn upload_poll_fails_on_sha256_mismatch() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"fake-package-bytes").unwrap();
 
         let wrong_sha256 = "0".repeat(64);
@@ -934,7 +967,7 @@ mod tests {
     #[tokio::test]
     async fn upload_500_html_error_is_concise() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("tool-1.0.0.deb");
+        let path = dir.path().join("tool-1.0.0.bin");
         std::fs::write(&path, b"x").unwrap();
         let server = MockServer::start(vec![MockResponse::bytes(
             500,

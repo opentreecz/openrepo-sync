@@ -33,31 +33,26 @@ struct RpmPackageEntry {
 }
 
 impl RpmPackageEntry {
-    fn to_remote_package(&self, base_url: &str) -> RemotePackage {
+    fn to_remote_package(&self, base_url: &str) -> Result<RemotePackage> {
         let version_str = if self.epoch > 0 {
             format!("{}:{}-{}", self.epoch, self.version, self.release)
         } else {
             format!("{}-{}", self.version, self.release)
         };
-        let basename = self
-            .location_href
-            .rsplit('/')
-            .next()
-            .unwrap_or(&self.location_href);
         let download_url = format!(
             "{}/{}",
             base_url.trim_end_matches('/'),
             self.location_href.trim_start_matches('/')
         );
 
-        RemotePackage {
-            filename: basename.to_string(),
+        Ok(RemotePackage {
+            filename: crate::filename::url_basename(&download_url)?,
             version: PackageVersion::parse(&version_str),
             download_url,
             sha256: None,
             package_name: Some(self.name.clone()),
             architecture: Some(self.arch.clone()),
-        }
+        })
     }
 }
 
@@ -278,7 +273,9 @@ impl RpmRepoSource {
                     "location" => {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == "href" {
-                                location_href = attr.value.into_owned();
+                                location_href = attr
+                                    .normalized_value(quick_xml::XmlVersion::Implicit1_0)?
+                                    .into_owned();
                             }
                         }
                     }
@@ -307,9 +304,7 @@ impl RpmRepoSource {
                             release: rel.clone(),
                             location_href: location_href.clone(),
                         };
-                        if self.apply_filters(&entry) {
-                            packages.push(entry.to_remote_package(&self.url));
-                        }
+                        self.collect_entry(&entry, &mut packages)?;
                     }
                     _ => {}
                 },
@@ -354,37 +349,37 @@ impl RpmRepoSource {
 
         for row in rows {
             let entry = row.context("Failed to read package row")?;
-            if self.apply_filters(&entry) {
-                packages.push(entry.to_remote_package(&self.url));
-            }
+            self.collect_entry(&entry, &mut packages)?;
         }
 
         Ok(packages)
     }
 
     /// Check if a package entry passes all configured filters.
-    fn apply_filters(&self, entry: &RpmPackageEntry) -> bool {
+    fn collect_entry(
+        &self,
+        entry: &RpmPackageEntry,
+        packages: &mut Vec<RemotePackage>,
+    ) -> Result<()> {
         // Architecture filter
         if !self.architectures.iter().any(|a| a == &entry.arch) {
-            return false;
+            return Ok(());
         }
         // Package name filter
         if !self.package_filter.is_empty() && !self.package_filter.iter().any(|f| f == &entry.name)
         {
-            return false;
+            return Ok(());
         }
         // Filename glob filter
-        if let Some(ref pattern) = self.filename_filter {
-            let basename = entry
-                .location_href
-                .rsplit('/')
-                .next()
-                .unwrap_or(&entry.location_href);
-            if !pattern.matches(basename) {
-                return false;
-            }
+        let package = entry.to_remote_package(&self.url)?;
+        if self
+            .filename_filter
+            .as_ref()
+            .is_none_or(|pattern| pattern.matches(&package.filename))
+        {
+            packages.push(package);
         }
-        true
+        Ok(())
     }
 
     /// Verify the GPG signature of `repomd.xml` using `repomd.xml.asc`.

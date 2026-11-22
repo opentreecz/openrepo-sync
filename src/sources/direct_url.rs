@@ -10,8 +10,7 @@ use crate::arch::{filename_matches_filter_or_unknown, package_arch_matches_filte
 use crate::models::{PackageVersion, RemotePackage};
 use crate::version::{
     extract_architecture_from_deb_filename, extract_architecture_from_package,
-    extract_package_name_from_filename, extract_version_from_filename,
-    extract_version_from_package,
+    extract_version_from_filename, extract_version_from_package,
 };
 
 pub struct DirectUrlSource {
@@ -48,7 +47,7 @@ impl DirectUrlSource {
     }
 
     async fn fetch_static_url(&self) -> Result<Vec<RemotePackage>> {
-        let filename = url_filename(&self.url);
+        let filename = crate::filename::url_basename(&self.url)?;
         if !filename_matches_filter_or_unknown(&filename, &self.arch_filter) {
             return Ok(Vec::new());
         }
@@ -79,7 +78,7 @@ impl DirectUrlSource {
             .context("Download request error")?;
 
         // Resolve the real filename from Content-Disposition, final URL, or original URL.
-        let original_filename = resolve_filename(&resp, &self.url);
+        let original_filename = resolve_filename(&resp, &self.url)?;
         let ext = Path::new(&original_filename)
             .extension()
             .and_then(|e| e.to_str())
@@ -135,11 +134,17 @@ impl DirectUrlSource {
         let versioned_filename = if original_filename.to_uppercase().contains("LATEST") {
             rename_with_version(&original_filename, &version)
         } else {
-            canonical_package_filename(&original_filename, &version, &architecture)
+            canonical_package_filename(
+                &original_filename,
+                &crate::version::package_name(&tmp_path)?,
+                &version,
+                &architecture,
+            )
         };
 
         // Persist the temp file to a stable path in the same temp directory.
         // This prevents RAII deletion while keeping the disk clean after sync.
+        crate::filename::validate(&versioned_filename)?;
         let stable_path = crate::cleanup::staging_dir().join(&versioned_filename);
         if let Some(parent) = stable_path.parent() {
             std::fs::create_dir_all(parent).context("Failed to create staging directory")?;
@@ -153,7 +158,9 @@ impl DirectUrlSource {
         Ok(vec![RemotePackage {
             filename: versioned_filename,
             version,
-            download_url: format!("file://{}", stable_path.display()),
+            download_url: reqwest::Url::from_file_path(&stable_path)
+                .map_err(|_| anyhow::anyhow!("Staging path must be absolute"))?
+                .to_string(),
             sha256: self.sha256.clone(),
             package_name: None,
             architecture: Some(architecture),
@@ -161,47 +168,67 @@ impl DirectUrlSource {
     }
 }
 
-pub(crate) fn url_filename(url: &str) -> String {
-    url.split('/')
-        .next_back()
-        .and_then(|s| s.split('?').next())
-        .unwrap_or("package")
-        .to_string()
+fn disposition_filename(header: &str) -> Result<Option<String>> {
+    static PARAM: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)^\s*;\s*([\w*-]+)\s*=\s*(?:"([^"\\]*)"|([^\s;"]+))\s*"#).unwrap()
+    });
+    let mut rest = header.find(';').map_or("", |i| &header[i..]);
+    let (mut plain, mut extended) = (None, None);
+    while !rest.is_empty() {
+        let cap = PARAM
+            .captures(rest)
+            .context("Malformed Content-Disposition parameter")?;
+        let value = cap.get(2).or_else(|| cap.get(3)).unwrap().as_str();
+        match cap[1].to_ascii_lowercase().as_str() {
+            "filename*" => {
+                anyhow::ensure!(extended.replace(value).is_none(), "Duplicate filename*")
+            }
+            "filename" => anyhow::ensure!(plain.replace(value).is_none(), "Duplicate filename"),
+            _ => {}
+        }
+        rest = &rest[cap.get(0).unwrap().end()..];
+    }
+    if let Some(raw) = extended {
+        let mut parts = raw.splitn(3, '\'');
+        anyhow::ensure!(
+            parts
+                .next()
+                .is_some_and(|s| s.eq_ignore_ascii_case("utf-8")),
+            "Unsupported filename* charset"
+        );
+        parts.next();
+        return crate::filename::decode_component(parts.next().context("Malformed filename*")?)
+            .map(Some);
+    }
+    if let Some(name) = plain {
+        crate::filename::validate(name)?;
+    }
+    Ok(plain.map(str::to_owned))
 }
-
-/// Regex for parsing Content-Disposition filename header.
-static CONTENT_DISPOSITION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r#"filename\*?=(?:"([^"]+)"|([^\s;]+))"#).unwrap());
 
 /// Resolve the real filename from a completed response:
 /// 1. Content-Disposition: attachment; filename="foo.deb"
 /// 2. Final URL after redirects
 /// 3. Original request URL
-fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> String {
+fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> Result<String> {
     // Try Content-Disposition header first
-    if let Some(Ok(cd_str)) = resp
-        .headers()
-        .get("content-disposition")
-        .map(|cd| cd.to_str())
-        && let Some(name) = CONTENT_DISPOSITION_RE.captures(cd_str).and_then(|caps| {
-            caps.get(1)
-                .or_else(|| caps.get(2))
-                .map(|m| m.as_str().trim().to_string())
-                .filter(|n| !n.is_empty())
-        })
+    if let Some(cd) = resp.headers().get("content-disposition")
+        && let Some(name) = disposition_filename(cd.to_str()?)?
     {
-        return name;
+        return Ok(name);
     }
 
     // Try final URL after redirects
     let final_url = resp.url().as_str();
-    let from_final = url_filename(final_url);
-    if !from_final.is_empty() && Path::new(&from_final).extension().is_some() {
-        return from_final;
+    if !resp.url().path().ends_with('/') {
+        let from_final = crate::filename::url_basename(final_url)?;
+        if Path::new(&from_final).extension().is_some() {
+            return Ok(from_final);
+        }
     }
 
     // Fall back to original URL
-    url_filename(original_url)
+    crate::filename::url_basename(original_url)
 }
 
 /// Build a canonical package filename from package metadata extracted at download time.
@@ -210,10 +237,10 @@ fn resolve_filename(resp: &reqwest::Response, original_url: &str) -> String {
 /// For `.rpm` files uses the RPM convention: `{name}-{version}.{arch}.rpm`.
 /// Falls back to [`rename_with_version`] for other file types.
 ///
-/// The package name is derived from the original URL filename; if it cannot be
-/// extracted the file stem is used as a fallback.
+/// The package name comes from the package header, not the vendor's URL.
 pub(crate) fn canonical_package_filename(
     original: &str,
+    name: &str,
     version: &PackageVersion,
     architecture: &str,
 ) -> String {
@@ -222,20 +249,9 @@ pub(crate) fn canonical_package_filename(
         .and_then(|e| e.to_str())
         .unwrap_or("bin");
 
-    let pkg_name = || -> String {
-        extract_package_name_from_filename(original)
-            .or_else(|| {
-                Path::new(original)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-            })
-            .unwrap_or_else(|| "package".to_string())
-    };
-
     match ext {
-        "deb" => format!("{}_{}_{}.deb", pkg_name(), version, architecture),
-        "rpm" => format!("{}-{}.{}.rpm", pkg_name(), version, architecture),
+        "deb" => format!("{name}_{version}_{architecture}.deb"),
+        "rpm" => format!("{name}-{version}.{architecture}.rpm"),
         _ => rename_with_version(original, version),
     }
 }
@@ -243,9 +259,10 @@ pub(crate) fn canonical_package_filename(
 pub(crate) fn rename_with_version(filename: &str, version: &PackageVersion) -> String {
     let version_str = version.to_string();
     if filename.to_uppercase().contains("LATEST") {
-        filename
-            .replace("LATEST", &version_str)
-            .replace("latest", &version_str)
+        static LATEST: LazyLock<Regex> = LazyLock::new(|| Regex::new("(?i)latest").unwrap());
+        LATEST
+            .replace_all(filename, regex::NoExpand(&version_str))
+            .into_owned()
     } else {
         let path = Path::new(filename);
         let stem = path
@@ -272,7 +289,7 @@ mod tests {
     #[test]
     fn url_filename_simple() {
         assert_eq!(
-            url_filename("https://example.com/pkg-1.2.3.deb"),
+            crate::filename::url_basename("https://example.com/pkg-1.2.3.deb").unwrap(),
             "pkg-1.2.3.deb"
         );
     }
@@ -280,15 +297,27 @@ mod tests {
     #[test]
     fn url_filename_strips_query_string() {
         assert_eq!(
-            url_filename("https://example.com/pkg-1.2.3.deb?foo=bar&baz=1"),
+            crate::filename::url_basename("https://example.com/pkg-1.2.3.deb?foo=bar&baz=1")
+                .unwrap(),
             "pkg-1.2.3.deb"
         );
     }
 
     #[test]
     fn url_filename_empty_path_fallback() {
-        assert_eq!(url_filename("https://example.com/"), "");
-        // last segment is empty; split('/').last() == Some("")
+        assert!(crate::filename::url_basename("https://example.com/").is_err());
+    }
+
+    #[test]
+    fn disposition_prefers_extended_and_rejects_ambiguous_names() {
+        assert_eq!(
+            disposition_filename("attachment; filename=fallback; Filename*=UTF-8'en'a%20b%7Ec.deb")
+                .unwrap()
+                .as_deref(),
+            Some("a b~c.deb")
+        );
+        assert!(disposition_filename("attachment; filename*=UTF-8''a%2520b").is_err());
+        assert!(disposition_filename("attachment; filename=\"../pkg.deb\"").is_err());
     }
 
     // ── rename_with_version ────────────────────────────────────────────────
@@ -339,7 +368,7 @@ mod tests {
         // Redirect URL already contains version — no doubling.
         let ver = PackageVersion::parse("3.23.23-1791166813");
         assert_eq!(
-            canonical_package_filename("cursor_3.23.23_amd64.deb", &ver, "amd64"),
+            canonical_package_filename("cursor_3.23.23_amd64.deb", "cursor", &ver, "amd64"),
             "cursor_3.23.23-1791166813_amd64.deb"
         );
     }
@@ -349,7 +378,7 @@ mod tests {
         // Package name extracted via VERSION_RE fallback (no underscore).
         let ver = PackageVersion::parse("1.0.161");
         assert_eq!(
-            canonical_package_filename("discord-1.0.161.deb", &ver, "amd64"),
+            canonical_package_filename("discord-1.0.161.deb", "discord", &ver, "amd64"),
             "discord_1.0.161_amd64.deb"
         );
     }
@@ -359,7 +388,7 @@ mod tests {
         // Filename has no version segment — stem used as package name.
         let ver = PackageVersion::parse("3.1.0");
         assert_eq!(
-            canonical_package_filename("mytool.deb", &ver, "all"),
+            canonical_package_filename("download.deb", "mytool", &ver, "all"),
             "mytool_3.1.0_all.deb"
         );
     }
@@ -368,7 +397,7 @@ mod tests {
     fn canonical_rpm_naming() {
         let ver = PackageVersion::parse("1.24.0");
         assert_eq!(
-            canonical_package_filename("nginx-1.24.0.rpm", &ver, "x86_64"),
+            canonical_package_filename("nginx-1.24.0.rpm", "nginx", &ver, "x86_64"),
             "nginx-1.24.0.x86_64.rpm"
         );
     }
@@ -378,7 +407,7 @@ mod tests {
         // Non deb/rpm: falls back to rename_with_version (appends version).
         let ver = PackageVersion::parse("1.0.0");
         assert_eq!(
-            canonical_package_filename("tool-LATEST.AppImage", &ver, "x86_64"),
+            canonical_package_filename("tool-LATEST.AppImage", "tool", &ver, "x86_64"),
             "tool-1.0.0.AppImage"
         );
     }
@@ -487,7 +516,7 @@ mod tests {
         let pkgs = source.fetch_latest(1).await.unwrap();
 
         assert_eq!(pkgs[0].version, PackageVersion::parse("3.1.0"));
-        assert_eq!(pkgs[0].filename, "mytool_3.1.0_all.deb");
+        assert_eq!(pkgs[0].filename, "testpkg_3.1.0_all.deb");
 
         let path = pkgs[0].download_url.strip_prefix("file://").unwrap();
         assert!(std::path::Path::new(path).exists());

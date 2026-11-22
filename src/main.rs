@@ -2,6 +2,7 @@ mod arch;
 mod cleanup;
 mod config;
 mod errors;
+mod filename;
 mod gpg;
 mod models;
 mod repo_client;
